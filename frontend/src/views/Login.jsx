@@ -1,29 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function Login() {
-    const { login } = useAuth();
+    const { user, login } = useAuth(); // 💡 Grab 'user' from context to check if already logged in
     const navigate = useNavigate(); 
+    
     const [identifier, setIdentifier] = useState('');
     const [password, setPassword] = useState('');
+    const [coopCode, setCoopCode] = useState(''); // 💡 NEW: Solves the Farmer ID collision
+    
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
-    
-    // State to handle password visibility toggle
     const [showPassword, setShowPassword] = useState(false);
+
+    // =====================================================================
+    // 💡 THE AUTO-LOGIN GUARD: Bypasses login if they already have a session
+    // =====================================================================
+    useEffect(() => {
+        if (user) {
+            if (user.role === 'ADMIN') navigate('/admin-dashboard', { replace: true });
+            else if (user.role === 'MANAGER') navigate('/manager-dashboard', { replace: true });
+            else if (user.role === 'FARMER') navigate('/farmer-dashboard', { replace: true });
+        }
+    }, [user, navigate]);
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
         setLoading(true);
 
-        const result = await login(identifier, password);
+        // 💡 Pass the coopCode to your auth function
+        const result = await login(identifier, password, coopCode);
         setLoading(false);
 
         if (result.success) {
-            // 💡 CRITICAL CACHE STEP: Saves the precise typed number string (e.g. 0002) 
-            // so the FarmerDashboard can render it side-by-side with their full name.
+            // CRITICAL CACHE STEP
             localStorage.setItem('farmerNo', identifier.trim());
 
             // MULTI-COOP ROLE-BASED ROUTING SYSTEM
@@ -45,7 +57,7 @@ export default function Login() {
         <div className="min-h-[calc(100vh-4rem)] sm:min-h-[calc(100vh-8rem)] bg-slate-50 flex items-center justify-center p-4 sm:p-6 antialiased">
             <div className="bg-white rounded-2xl shadow-xl border border-slate-200/60 max-w-4xl w-full overflow-hidden flex flex-col md:flex-row transition-all duration-300">
                 
-                {/* Brand Side Panel - Responsive visibility and layout */}
+                {/* Brand Side Panel */}
                 <div className="bg-emerald-800 text-white p-6 sm:p-8 md:w-1/2 flex flex-col justify-between relative overflow-hidden">
                     <div className="absolute inset-0 bg-gradient-to-br from-emerald-800 to-teal-950 opacity-95 z-0"></div>
                     <div className="relative z-10 animate-fade-in space-y-4">
@@ -93,8 +105,23 @@ export default function Login() {
                                 value={identifier}
                                 onChange={(e) => setIdentifier(e.target.value)}
                                 className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white transition-all duration-200 text-sm"
-                                placeholder="e.g., john_doe or 0001"
+                                placeholder="john_doe or 0001"
                                 required
+                            />
+                        </div>
+
+                        {/* 💡 NEW COOPERATIVE CODE FIELD */}
+                        <div>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-700 mb-1.5 flex justify-between">
+                                <span>Cooperative Code</span>
+                                {/* 💡 UPDATED THE LABEL HERE */}
+                            </label>
+                            <input
+                                type="text"
+                                value={coopCode}
+                                onChange={(e) => setCoopCode(e.target.value.toUpperCase())}
+                                className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white transition-all duration-200 text-sm font-mono"
+                                placeholder="MR10"
                             />
                         </div>
 

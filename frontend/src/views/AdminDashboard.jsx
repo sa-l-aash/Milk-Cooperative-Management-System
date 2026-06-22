@@ -9,6 +9,7 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("deployment");
 
   // Form State: Deployment
+  const [coopCode, setCoopCode] = useState(""); // 💡 NEW: Added coopCode state
   const [coopName, setCoopName] = useState("");
   const [county, setCounty] = useState("");
   const [subCounty, setSubCounty] = useState("");
@@ -19,9 +20,10 @@ export default function AdminDashboard() {
   const [cooperatives, setCooperatives] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
 
-  // 💡 NEW: State for Inline Editing
+  // State for Inline Editing
   const [editingCoopId, setEditingCoopId] = useState(null);
   const [editFormData, setEditFormData] = useState({
+    coopCode: "", // 💡 NEW: Added to edit state
     name: "",
     county: "",
     subCounty: "",
@@ -83,10 +85,11 @@ export default function AdminDashboard() {
             Authorization: `Bearer ${user.token}`,
           },
           body: JSON.stringify({
+            coopCode, // 💡 NEW: Included in the payload
             coopName,
             county,
             subCounty,
-            managerName,
+            managerUsername: managerName,
             managerPassword,
           }),
         },
@@ -94,6 +97,7 @@ export default function AdminDashboard() {
       const resultText = await response.text();
       if (response.ok) {
         setStatus({ type: "success", text: resultText });
+        setCoopCode(""); // Reset
         setCoopName("");
         setCounty("");
         setSubCounty("");
@@ -116,11 +120,12 @@ export default function AdminDashboard() {
   };
 
   // =====================================================================
-  // 💡 NEW: EDIT AND DELETE FUNCTIONALITY
+  // EDIT AND DELETE FUNCTIONALITY
   // =====================================================================
   const handleEditClick = (coop) => {
     setEditingCoopId(coop.cooperativeId);
     setEditFormData({
+      coopCode: coop.coopCode || "", // 💡 NEW: Load current code
       name: coop.name,
       county: coop.county,
       subCounty: coop.subCounty,
@@ -139,7 +144,7 @@ export default function AdminDashboard() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${user.token}`,
           },
-          body: JSON.stringify(editFormData),
+          body: JSON.stringify(editFormData), // Sends coopCode automatically now
         },
       );
       const text = await response.text();
@@ -260,7 +265,6 @@ export default function AdminDashboard() {
           onSubmit={handleProvisionSystem}
           className="bg-white border border-slate-200 rounded-2xl p-5 sm:p-8 shadow-sm space-y-8"
         >
-          {/* ... (Deployment Form remains exactly the same as previously) ... */}
           <div>
             <h2 className="text-lg sm:text-xl font-bold text-slate-900">
               Deploy New Branch
@@ -289,6 +293,23 @@ export default function AdminDashboard() {
                   required
                 />
               </div>
+
+              {/* 💡 NEW: Cooperative Code Field inserted directly below Cooperative Name */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-600 mb-2 flex justify-between items-center">
+                  <span>Cooperative Code</span>
+                  <span className="text-slate-400 font-medium normal-case">Unique ID</span>
+                </label>
+                <input
+                  type="text"
+                  value={coopCode}
+                  onChange={(e) => setCoopCode(e.target.value.toUpperCase())}
+                  className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white transition-all font-mono"
+                  placeholder="e.g., MR10"
+                  required
+                />
+              </div>
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
                   <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-600 mb-2">
@@ -428,6 +449,7 @@ export default function AdminDashboard() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold tracking-wider text-[11px]">
                   <th className="p-4 whitespace-nowrap">ID</th>
+                  <th className="p-4 whitespace-nowrap">Coop Code</th> {/* 💡 NEW COLUMN HEADER */}
                   <th className="p-4 whitespace-nowrap">Cooperative Name</th>
                   <th className="p-4 whitespace-nowrap">
                     Location (County / Sub)
@@ -442,7 +464,7 @@ export default function AdminDashboard() {
                 {loadingData ? (
                   <tr>
                     <td
-                      colSpan="7"
+                      colSpan="8"
                       className="text-center p-10 text-slate-400 text-sm"
                     >
                       Loading infrastructure data...
@@ -451,7 +473,7 @@ export default function AdminDashboard() {
                 ) : cooperatives.length === 0 ? (
                   <tr>
                     <td
-                      colSpan="7"
+                      colSpan="8"
                       className="text-center p-10 text-slate-400 text-sm"
                     >
                       No active cooperatives deployed in the network yet.
@@ -470,6 +492,20 @@ export default function AdminDashboard() {
                       {/* 💡 INLINE EDITING LOGIC */}
                       {editingCoopId === coop.cooperativeId ? (
                         <>
+                          <td className="p-2">
+                            <input
+                              type="text"
+                              value={editFormData.coopCode}
+                              onChange={(e) =>
+                                setEditFormData({
+                                  ...editFormData,
+                                  coopCode: e.target.value.toUpperCase(),
+                                })
+                              }
+                              className="w-full border border-slate-300 rounded px-2 py-1 text-xs focus:ring-2 focus:ring-emerald-500 outline-none font-mono text-emerald-700 font-bold"
+                              placeholder="Code"
+                            />
+                          </td>
                           <td className="p-2">
                             <input
                               type="text"
@@ -526,6 +562,9 @@ export default function AdminDashboard() {
                         </>
                       ) : (
                         <>
+                          <td className="p-4 font-mono font-bold text-emerald-700">
+                            {coop.coopCode || "N/A"}
+                          </td>
                           <td className="p-4 text-slate-900 font-bold">
                             {coop.name}
                           </td>

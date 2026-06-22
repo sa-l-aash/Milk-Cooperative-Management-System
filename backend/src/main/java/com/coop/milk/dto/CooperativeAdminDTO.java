@@ -5,6 +5,7 @@ import java.time.LocalDateTime;
 
 public class CooperativeAdminDTO {
     private Long cooperativeId;
+    private String coopCode; // 💡 NEW FIELD
     private String name;
     private String county;
     private String subCounty;
@@ -13,9 +14,10 @@ public class CooperativeAdminDTO {
     private BigDecimal baseRatePerLiter;
     private LocalDateTime timestamp;
 
-    public CooperativeAdminDTO(Long cooperativeId, String name, String county, String subCounty, 
+    public CooperativeAdminDTO(Long cooperativeId, String coopCode, String name, String county, String subCounty, 
                                String managerName, long farmerCount, BigDecimal baseRatePerLiter, LocalDateTime timestamp) {
         this.cooperativeId = cooperativeId;
+        this.coopCode = coopCode; // 💡 SET IN CONSTRUCTOR
         this.name = name;
         this.county = county;
         this.subCounty = subCounty;
@@ -27,6 +29,7 @@ public class CooperativeAdminDTO {
 
     // Getters
     public Long getCooperativeId() { return cooperativeId; }
+    public String getCoopCode() { return coopCode; } // 💡 NEW GETTER
     public String getName() { return name; }
     public String getCounty() { return county; }
     public String getSubCounty() { return subCounty; }

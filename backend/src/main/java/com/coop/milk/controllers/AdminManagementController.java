@@ -47,9 +47,10 @@ public class AdminManagementController {
                         .map(com.coop.milk.models.User::getUsername)
                         .orElse("Unassigned");
 
-                // Package it all up
+                // Package it all up (💡 ADDED COOP CODE HERE)
                 return new com.coop.milk.dto.CooperativeAdminDTO(
                         coop.getCooperativeId(),
+                        coop.getCoopCode(), // <-- New Field
                         coop.getName(),
                         coop.getCounty(),
                         coop.getSubCounty(),
@@ -68,36 +69,33 @@ public class AdminManagementController {
     }
 
     // 2. Endpoint to provision a new physical station and bind its manager
-    // 💡 FIXED: Moved the correct routing annotations down to the correct method!
     @PostMapping("/provision-station")
     @Transactional
     public ResponseEntity<?> provisionCooperativeAndManager(@RequestBody Map<String, Object> payload) {
         try {
-            // Parse payload fields safely (County and Sub-County geographical parameters)
+            // Parse payload fields safely
+            String coopCode = ((String) payload.get("coopCode")).trim().toUpperCase(); // 💡 NEW
             String coopName = ((String) payload.get("coopName")).trim();
             String county = ((String) payload.get("county")).trim();
             String subCounty = ((String) payload.get("subCounty")).trim();
             String username = ((String) payload.get("managerUsername")).trim().toLowerCase();
-            String password = ((String) payload.get("managerPassword")).trim(); // Sanitized trailing spaces
+            String password = ((String) payload.get("managerPassword")).trim(); 
 
-            // ENFORCE SAFETY VALIDATION CHEERS (Case-Insensitive Constraints)
-            // A. Check for duplicate cooperative name registries globally
+            // ENFORCE SAFETY VALIDATION CHEERS
             if (cooperativeRepository.findByNameIgnoreCase(coopName).isPresent()) {
                 return ResponseEntity.badRequest().body("Error: A cooperative branch with the name '" + coopName + "' already exists inside the database system.");
             }
 
-            // B. Check for duplicate manager account usernames globally
             if (userRepository.findByUsernameIgnoreCase(username).isPresent()) {
                 return ResponseEntity.badRequest().body("Error: Manager username '" + username + "' is already registered in the system registry.");
             }
 
-            // Create and persist the Cooperative entity with localized branch identifiers
+            // Create and persist the Cooperative entity
             Cooperative cooperative = new Cooperative();
+            cooperative.setCoopCode(coopCode); // 💡 NEW
             cooperative.setName(coopName);
             cooperative.setCounty(county);
             cooperative.setSubCounty(subCounty);
-            
-            // Baseline buying price initializes at zero; managers update it via dashboard authority
             cooperative.setBaseRatePerLiter(BigDecimal.ZERO);
             
             Cooperative savedCooperative = cooperativeRepository.save(cooperative);
@@ -111,20 +109,19 @@ public class AdminManagementController {
 
             userRepository.save(manager);
 
-            return ResponseEntity.ok("Successfully deployed " + coopName + " branch at " + 
+            return ResponseEntity.ok("Successfully deployed " + coopName + " branch [" + coopCode + "] at " + 
                     subCounty + " Sub-County, " + county + " County. Assigned station manager: " + username);
 
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Infrastructure provisioning failed: " + e.getMessage());
         }
     }
+
     // =======================================================================================
     // 💡 NEW ENDPOINTS: EDIT AND DELETE COOPERATIVES
     // =======================================================================================
 
-    // 3. Endpoint to modify an existing cooperative's details
- // 3. Endpoint to modify an existing cooperative's details AND the Manager's Username
-   // 3. Endpoint to modify an existing cooperative's details AND the Manager's Username
+    // 3. Endpoint to modify an existing cooperative's details AND the Manager's Username
     @PutMapping("/cooperatives/{id}")
     @Transactional
     public ResponseEntity<?> updateCooperative(@PathVariable Long id, @RequestBody Map<String, Object> payload) {
@@ -133,16 +130,18 @@ public class AdminManagementController {
                     .orElseThrow(() -> new RuntimeException("Cooperative not found."));
 
             // 💡 Safely parse fields to prevent NullPointerExceptions
+            String newCoopCode = payload.getOrDefault("coopCode", "").toString().trim().toUpperCase(); // 💡 NEW
             String newName = payload.getOrDefault("name", "").toString().trim();
             String newCounty = payload.getOrDefault("county", "").toString().trim();
             String newSubCounty = payload.getOrDefault("subCounty", "").toString().trim();
             String newManagerName = payload.getOrDefault("managerName", "").toString().trim();
 
-            if (newName.isEmpty() || newCounty.isEmpty() || newSubCounty.isEmpty()) {
-                throw new RuntimeException("Cooperative name, county, and sub-county cannot be empty.");
+            if (newName.isEmpty() || newCounty.isEmpty() || newSubCounty.isEmpty() || newCoopCode.isEmpty()) {
+                throw new RuntimeException("Cooperative code, name, county, and sub-county cannot be empty.");
             }
 
             // Update Cooperative details
+            coop.setCoopCode(newCoopCode); // 💡 NEW
             coop.setName(newName);
             coop.setCounty(newCounty);
             coop.setSubCounty(newSubCounty);
@@ -152,7 +151,7 @@ public class AdminManagementController {
             if (!newManagerName.isEmpty() && !newManagerName.equals("Unassigned")) {
                 userRepository.findFirstByCooperative(coop).ifPresent(manager -> {
                     if (!manager.getUsername().equalsIgnoreCase(newManagerName)) {
-                        // Safety check: Ensure the new username isn't already taken by someone else
+                        // Safety check: Ensure the new username isn't already taken
                         if (userRepository.findByUsernameIgnoreCase(newManagerName).isPresent()) {
                             throw new RuntimeException("The username '" + newManagerName + "' is already taken.");
                         }
@@ -164,10 +163,11 @@ public class AdminManagementController {
 
             return ResponseEntity.ok("Cooperative and Manager details updated successfully.");
         } catch (Exception e) {
-            // This is what returns the 400 Bad Request to React!
             return ResponseEntity.badRequest().body("Update failed: " + e.getMessage());
         }
-    }// 4. Endpoint to safely delete a cooperative AND its connected data
+    }
+
+    // 4. Endpoint to safely delete a cooperative AND its connected data
     @DeleteMapping("/cooperatives/{id}")
     @Transactional
     public ResponseEntity<?> deleteCooperative(@PathVariable Long id) {

@@ -8,13 +8,14 @@ export const AuthProvider = ({ children }) => {
         return savedUser ? JSON.parse(savedUser) : null;
     });
 
-    const login = async (identifier, password) => {
+    // 💡 FIXED: Added coopCode to the parameters
+    const login = async (identifier, password, coopCode) => {
         try {
             const response = await fetch('http://localhost:8080/api/v1/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                // 💡 FIXED PERMANENTLY: Changed 'identifier' to 'username' to align with Spring Boot's DTO
-                body: JSON.stringify({ identifier, password }),
+                // 💡 FIXED: Packaged coopCode into the payload for the Spring Boot DTO
+                body: JSON.stringify({ identifier, password, coopCode }),
             });
 
             if (!response.ok) {

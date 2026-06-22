@@ -49,6 +49,17 @@ public class Cooperative {
 
     public String getSubCounty() { return subCounty; }
     public void setSubCounty(String subCounty) { this.subCounty = subCounty; }
+    @Column(unique = true, nullable = false)
+    private String coopCode;
+
+    // 💡 DON'T FORGET THE GETTER AND SETTER AT THE BOTTOM OF THE FILE!
+    public String getCoopCode() {
+        return coopCode;
+    }
+
+    public void setCoopCode(String coopCode) {
+        this.coopCode = coopCode;
+    }
 
     public BigDecimal getBaseRatePerLiter() { return baseRatePerLiter; }
     public void setBaseRatePerLiter(BigDecimal baseRatePerLiter) { this.baseRatePerLiter = baseRatePerLiter; }

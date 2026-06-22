@@ -43,39 +43,58 @@ public class AuthController {
     public ResponseEntity<?> authenticateUser(@RequestBody LoginRequest loginRequest) {
         String identifier = loginRequest.getIdentifier();
         String password = loginRequest.getPassword();
+        
+        // 💡 1. Extract and normalize the incoming cooperative code
+        String providedCoopCode = loginRequest.getCoopCode();
+        String safeCoopCode = (providedCoopCode != null) ? providedCoopCode.trim().toUpperCase() : "";
 
-        // 1. Farmer Authentication Flow (Handles duplicate numbers across different cooperatives)
+        // =========================================================================
+        // FARMER AUTHENTICATION FLOW
+        // =========================================================================
         if (identifier.matches("\\d+")) {
-            // FIXED: Fetch farmers as a collection list to manage composite identifier validation rules cleanly
+            if (safeCoopCode.isEmpty()) {
+                return ResponseEntity.status(401).body("Cooperative Code is required for Farmer login.");
+            }
+
             List<Farmer> farmers = farmerRepository.findByFarmerNumber(identifier);
             
             for (Farmer farmer : farmers) {
-                if (passwordEncoder.matches(password, farmer.getPasswordHash())) {
-                    String token = tokenProvider.generateToken(farmer.getFarmerNumber(), "FARMER");
+                // 💡 2. Validate the specific farmer against the provided Cooperative Code
+                if (farmer.getCooperative() != null && farmer.getCooperative().getCoopCode().equalsIgnoreCase(safeCoopCode)) {
                     
-                    // Extract geographic properties for Farmers safely
-                    String coopName = "Independent Cluster";
-                    String county = "";
-                    String subCounty = "";
-                    
-                    if (farmer.getCooperative() != null) {
-                        coopName = farmer.getCooperative().getName();
-                        county = farmer.getCooperative().getCounty();
-                        subCounty = farmer.getCooperative().getSubCounty();
+                    if (passwordEncoder.matches(password, farmer.getPasswordHash())) {
+                        String token = tokenProvider.generateToken(farmer.getFarmerNumber(), "FARMER");
+                        
+                        String coopName = farmer.getCooperative().getName();
+                        String county = farmer.getCooperative().getCounty();
+                        String subCounty = farmer.getCooperative().getSubCounty();
+                        
+                        return ResponseEntity.ok(new AuthResponse(token, "FARMER", farmer.getFullName(), farmer.getFarmerId(), coopName, county, subCounty));
+                    } else {
+                        return ResponseEntity.status(401).body("Invalid Password!");
                     }
-                    
-                    // Returns the 7-parameter signature for Farmers matching updated DTO constructors
-                    return ResponseEntity.ok(new AuthResponse(token, "FARMER", farmer.getFullName(), farmer.getFarmerId(), coopName, county, subCounty));
                 }
             }
-            return ResponseEntity.status(401).body("Invalid Farmer Credentials!");
+            return ResponseEntity.status(401).body("Invalid Farmer Number or Cooperative Code!");
         }
 
-        // 2. Real Database Lookup for System Administrators and Cooperative Managers
+        // =========================================================================
+        // MANAGER & ADMIN AUTHENTICATION FLOW
+        // =========================================================================
         Optional<User> userOptional = userRepository.findByUsernameIgnoreCase(identifier);
         
         if (userOptional.isPresent()) {
             User user = userOptional.get();
+            
+            // 💡 3. MANAGER SECURITY GUARD: Enforce the Cooperative Code check
+            if ("MANAGER".equalsIgnoreCase(user.getRole())) {
+                if (safeCoopCode.isEmpty()) {
+                    return ResponseEntity.status(401).body("Cooperative Code is strictly required for Manager access.");
+                }
+                if (user.getCooperative() == null || !user.getCooperative().getCoopCode().equalsIgnoreCase(safeCoopCode)) {
+                    return ResponseEntity.status(401).body("Access Denied: Invalid Cooperative Code for this Manager account.");
+                }
+            }
             
             // Check if the raw incoming password matches the secure BCrypt hash
             if (passwordEncoder.matches(password, user.getPasswordHash()) || "manager123".equals(password)) {
@@ -86,37 +105,29 @@ public class AuthController {
                 String countyName = "";
                 String subCountyName = "";
                 
-                // ROLE GUARD: Check if user is an administrator first to avoid null cooperative lookup errors
-                if (user.getRole() != null && "ADMIN".equalsIgnoreCase(user.getRole())) {
+                if ("ADMIN".equalsIgnoreCase(user.getRole())) {
                     coopName = "Main Administration System";
                     countyName = "Central";
                     subCountyName = "HQ Node";
                 } else {
-                    // Operational Manager relationship mapping check
                     if (user.getCooperative() != null) {
                         coopName = user.getCooperative().getName();
                         countyName = user.getCooperative().getCounty();
                         subCountyName = user.getCooperative().getSubCounty();
-                        System.out.println("DEBUG TRANSACTION - Found Cooperative Name: " + coopName);
                     } else {
                         try {
-                            // Sync entity state with database if lazy proxy evaluation failed
                             entityManager.refresh(user);
                             if (user.getCooperative() != null) {
                                 coopName = user.getCooperative().getName();
                                 countyName = user.getCooperative().getCounty();
                                 subCountyName = user.getCooperative().getSubCounty();
-                            } else {
-                                System.out.println("System Log: Manager '" + user.getUsername() + "' has no bound cooperative relation in database.");
                             }
                         } catch (Exception ex) {
-                            // Safe fallback handler if entity is detached during session validation
                             System.out.println("Cache refresh skipped for user context: " + ex.getMessage());
                         }
                     }
                 }
                 
-                // Returns all 7 parameters required by your updated AuthResponse constructor signature
                 return ResponseEntity.ok(new AuthResponse(
                     token, 
                     user.getRole(), 
@@ -131,11 +142,11 @@ public class AuthController {
 
         return ResponseEntity.status(401).body("Invalid Username or Password Credentials!");
     }
+
     // TEMPORARY TEST USER GENERATOR
     @GetMapping("/create-test-user")
     public String createTestUser() {
         try {
-            // Check if it already exists so we don't crash
             if (userRepository.findByUsernameIgnoreCase("sk_admin").isPresent()) {
                 return "User 'sk_admin' already exists! Try logging in.";
             }
@@ -144,9 +155,6 @@ public class AuthController {
             testAdmin.setUsername("sk_admin");
             testAdmin.setPasswordHash(passwordEncoder.encode("password123"));
             testAdmin.setRole("ADMIN");
-            
-            // Note: If you have required columns like fullName, add them here!
-            // testAdmin.setFullName("SK Admin"); 
             
             userRepository.save(testAdmin);
             return "SUCCESS! User 'sk_admin' created with password 'password123'. Go to your React app and log in!";
