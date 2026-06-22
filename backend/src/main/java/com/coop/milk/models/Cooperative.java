@@ -2,7 +2,7 @@ package com.coop.milk.models;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
-import java.time.ZonedDateTime;
+import java.time.LocalDateTime;
 
 @Entity
 @Table(name = "cooperatives")
@@ -25,8 +25,17 @@ public class Cooperative {
     @Column(name = "base_rate_per_liter", nullable = false, precision = 6, scale = 2)
     private BigDecimal baseRatePerLiter;
 
-    @Column(name = "created_at", insertable = false, updatable = false)
-    private ZonedDateTime createdAt;
+    // 💡 FIXED: Mapped precisely to the "timestamp" column in your DB
+    @Column(name = "timestamp", updatable = false)
+    private LocalDateTime timestamp;
+
+    // 💡 ADDED: Fires automatically the millisecond before the database saves the row
+    @PrePersist
+    protected void onCreate() {
+        if (this.timestamp == null) {
+            this.timestamp = LocalDateTime.now();
+        }
+    }
 
     // Getters and Setters
     public Long getCooperativeId() { return cooperativeId; }
@@ -44,6 +53,6 @@ public class Cooperative {
     public BigDecimal getBaseRatePerLiter() { return baseRatePerLiter; }
     public void setBaseRatePerLiter(BigDecimal baseRatePerLiter) { this.baseRatePerLiter = baseRatePerLiter; }
 
-    public ZonedDateTime getCreatedAt() { return createdAt; }
-    public void setCreatedAt(ZonedDateTime createdAt) { this.createdAt = createdAt; }
+    public LocalDateTime getTimestamp() { return timestamp; }
+    public void setTimestamp(LocalDateTime timestamp) { this.timestamp = timestamp; }
 }

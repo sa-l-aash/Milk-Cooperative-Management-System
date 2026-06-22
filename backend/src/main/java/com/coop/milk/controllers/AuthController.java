@@ -131,4 +131,27 @@ public class AuthController {
 
         return ResponseEntity.status(401).body("Invalid Username or Password Credentials!");
     }
+    // TEMPORARY TEST USER GENERATOR
+    @GetMapping("/create-test-user")
+    public String createTestUser() {
+        try {
+            // Check if it already exists so we don't crash
+            if (userRepository.findByUsernameIgnoreCase("sk_admin").isPresent()) {
+                return "User 'sk_admin' already exists! Try logging in.";
+            }
+
+            User testAdmin = new User();
+            testAdmin.setUsername("sk_admin");
+            testAdmin.setPasswordHash(passwordEncoder.encode("password123"));
+            testAdmin.setRole("ADMIN");
+            
+            // Note: If you have required columns like fullName, add them here!
+            // testAdmin.setFullName("SK Admin"); 
+            
+            userRepository.save(testAdmin);
+            return "SUCCESS! User 'sk_admin' created with password 'password123'. Go to your React app and log in!";
+        } catch (Exception e) {
+            return "FAILED TO CREATE USER. Database says: " + e.getMessage();
+        }
+    }
 }

@@ -2,6 +2,8 @@ package com.coop.milk.models;
 
 import jakarta.persistence.*;
 import java.time.ZonedDateTime;
+import java.util.List;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 
 @Entity
 @Table(
@@ -38,6 +40,11 @@ public class Farmer {
     @Column(name = "created_at", insertable = false, updatable = false)
     private ZonedDateTime createdAt;
 
+    // 💡 CRITICAL CASCADE FIX: Wipes out all matching history rows automatically when a farmer is dropped
+    @OneToMany(mappedBy = "farmer", cascade = CascadeType.ALL, orphanRemoval = true)
+    @JsonIgnore // Prevents infinite recursion loops during serialization sweeps
+    private List<MilkDelivery> collections;
+
     // Getters and Setters
     public Long getFarmerId() { return farmerId; }
     public void setFarmerId(Long farmerId) { this.farmerId = farmerId; }
@@ -59,4 +66,7 @@ public class Farmer {
 
     public ZonedDateTime getCreatedAt() { return createdAt; }
     public void setCreatedAt(ZonedDateTime createdAt) { this.createdAt = createdAt; }
+
+    public List<MilkDelivery> getCollections() { return collections; }
+    public void setCollections(List<MilkDelivery> collections) { this.collections = collections; }
 }

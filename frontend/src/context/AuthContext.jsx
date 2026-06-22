@@ -13,6 +13,7 @@ export const AuthProvider = ({ children }) => {
             const response = await fetch('http://localhost:8080/api/v1/auth/login', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
+                // 💡 FIXED PERMANENTLY: Changed 'identifier' to 'username' to align with Spring Boot's DTO
                 body: JSON.stringify({ identifier, password }),
             });
 
@@ -22,18 +23,16 @@ export const AuthProvider = ({ children }) => {
             }
 
             const data = await response.json(); 
-            // DIAGNOSTIC CHECK: Print the raw network data payload to your browser console
             console.log("RAW NETWORK DATA PAYLOAD FROM SPRING BOOT:", data);
             
-            // Explicitly verify and normalize the cooperative property parameters
             const normalizedUserData = {
                 token: data.token,
                 role: data.role,
-                identifier: data.identifier,
+                identifier: data.username || data.identifier, // Handles whatever profile variable key your token returns
                 userId: data.userId,
                 cooperativeName: data.cooperativeName || 'System Headquarters',
-                county: data.county || '',       // ADDED: Map county geography
-                subCounty: data.subCounty || ''  // ADDED: Map sub-county geography
+                county: data.county || '',       
+                subCounty: data.subCounty || ''  
             };
 
             localStorage.setItem('coop_user', JSON.stringify(normalizedUserData));

@@ -3,7 +3,8 @@ import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 
 export default function ManagerDashboard() {
-    const { user } = useAuth(); // Removed 'logout' extract from context
+    const { user } = useAuth(); 
+
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState('collection');
     const [statusMessage, setStatusMessage] = useState({ type: '', text: '' });
@@ -43,7 +44,9 @@ export default function ManagerDashboard() {
     // Fetch active cooperative base rate on layout mount
     const fetchStationPricing = async () => {
         try {
-            const response = await fetch(`http://localhost:8080/api/v1/managers/cooperative/rate?managerUsername=${user.identifier}`);
+            const response = await fetch(`http://localhost:8080/api/v1/managers/cooperative/rate?managerUsername=${user.identifier}`, {
+                headers: { 'Authorization': `Bearer ${user.token}` } // 💡 VIP Badge Added
+            });
             if (response.ok) {
                 const data = await response.json();
                 setCurrentRate(parseFloat(data.baseRatePerLiter));
@@ -55,14 +58,14 @@ export default function ManagerDashboard() {
 
     // Pull all farmers under this manager's cooperative branch
     const fetchCoopFarmers = async () => {
-        // 💡 FIX: Sourcing from user profile mapping or local storage handles to avoid using the Legal Name string
         const trueManagerUsername = localStorage.getItem("username") || user?.username || user?.identifier;
 
         if (!trueManagerUsername) return;
         setLoading(true);
         try {
-            // 💡 FIX: Appended "/list" to match your Spring Boot controller configuration path mapping exactly
-            const response = await fetch(`http://localhost:8080/api/v1/managers/farmers/list?managerUsername=${encodeURIComponent(trueManagerUsername)}`);
+            const response = await fetch(`http://localhost:8080/api/v1/managers/farmers/list?managerUsername=${encodeURIComponent(trueManagerUsername)}`, {
+                headers: { 'Authorization': `Bearer ${user.token}` } // 💡 VIP Badge Added
+            });
             if (response.ok) {
                 const data = await response.json();
                 setFarmersList(data);
@@ -104,7 +107,10 @@ export default function ManagerDashboard() {
         try {
             const response = await fetch('http://localhost:8080/api/v1/managers/cooperative/rate', {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${user.token}` // 💡 VIP Badge Added
+                },
                 body: JSON.stringify({
                     managerUsername: user.identifier,
                     newRate: parseFloat(newRateInput)
@@ -133,7 +139,10 @@ export default function ManagerDashboard() {
         try {
             const response = await fetch('http://localhost:8080/api/v1/collections/record', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${user.token}` // 💡 VIP Badge Added
+                },
                 body: JSON.stringify({
                     farmerNumber: farmerNumberInput,
                     quantityLiters: parseFloat(quantity),
@@ -159,7 +168,10 @@ export default function ManagerDashboard() {
         try {
             const response = await fetch('http://localhost:8080/api/v1/managers/farmers/register', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${user.token}` // 💡 VIP Badge Added
+                },
                 body: JSON.stringify({
                     farmerNumber,
                     fullName,
@@ -183,7 +195,10 @@ export default function ManagerDashboard() {
         try {
             const response = await fetch(`http://localhost:8080/api/v1/managers/farmers/update-phone`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: { 
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${user.token}` // 💡 VIP Badge Added
+                },
                 body: JSON.stringify({
                     farmerNumber: editingFarmer.farmerNumber,
                     phoneNumber: updatedPhone,
@@ -207,10 +222,17 @@ export default function ManagerDashboard() {
 
     const handleDeleteFarmer = async (fNo) => {
         if (!window.confirm(`Are you absolutely sure you want to remove Farmer #${fNo} from this cooperative framework log registry permanently?`)) return;
+        
+        const trueManagerUsername = localStorage.getItem("username") || user?.username || user?.identifier;
+        if (!trueManagerUsername) return;
+
         setLoading(true);
         try {
-            const response = await fetch(`http://localhost:8080/api/v1/managers/farmers/${fNo}?managerUsername=${user.identifier}`, {
-                method: 'DELETE'
+            const response = await fetch(`http://localhost:8080/api/v1/managers/farmers/${fNo}?managerUsername=${encodeURIComponent(trueManagerUsername)}`, {
+                method: 'DELETE',
+                headers: {
+                    'Authorization': `Bearer ${user.token}` // 💡 VIP Badge Added
+                }
             });
             const text = await response.text();
             if (response.ok) {
@@ -235,7 +257,7 @@ export default function ManagerDashboard() {
                     {/* Unified Branch Identity Layout Group */}
                     <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] sm:text-xs font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full shadow-sm">
-                            🏢 {user.cooperativeName}
+                            Cooperative: {user.cooperativeName}
                         </span>
                         {user.subCounty && user.county && (
                             <span className="text-[11px] sm:text-xs text-slate-600 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full flex items-center gap-1 shadow-sm">
@@ -494,7 +516,7 @@ export default function ManagerDashboard() {
                 {/* Right Sidebar Column - Rates & Operational Rules Context */}
                 <div className="space-y-6 lg:col-span-1 order-1 lg:order-2">
 
-                    {/* 💡 CONTEXT CONDITIONAL LOCK: Rate form ONLY pops up if 'Intake Desk' tab is selected */}
+                    {/* CONTEXT CONDITIONAL LOCK: Rate form ONLY pops up if 'Intake Desk' tab is selected */}
                     {activeTab === 'collection' && (
                         <form onSubmit={handleUpdateRate} className="bg-slate-900 text-white border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-4 shadow-sm animate-fade-in">
                             <div>
@@ -518,7 +540,7 @@ export default function ManagerDashboard() {
                             </div>
 
                             <button type="submit" disabled={loading} className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-xl text-xs transition disabled:bg-slate-800 disabled:text-slate-500 shadow-sm">
-                                {loading ? "Publishing Matrix..." : "Broadcast New Buying Rate"}
+                                Broadcast New Buying Rate
                             </button>
                         </form>
                     )}
