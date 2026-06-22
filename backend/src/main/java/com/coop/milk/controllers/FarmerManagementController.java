@@ -8,6 +8,7 @@ import com.coop.milk.repositories.UserRepository;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -88,36 +89,46 @@ public class FarmerManagementController {
     }
 
     // =======================================================================================
-    // 💡 THE MISSING PIECES: ADDED EDIT AND DELETE METHODS BELOW
+    // 💡 UPGRADED: SECURE INLINE EDIT METHOD (Handles both Name and Phone)
     // =======================================================================================
 
-    // 3. Endpoint to modify an existing farmer's phone number
-    @PutMapping("/update-phone")
-    public ResponseEntity<?> updateFarmerPhone(@RequestBody Map<String, Object> payload) {
+    // 3. Endpoint to securely update a farmer's full name and phone number
+    @PutMapping("/update")
+    @Transactional
+    public ResponseEntity<?> updateFarmerDetails(@RequestBody Map<String, Object> payload) {
         try {
-            String farmerNumber = ((String) payload.get("farmerNumber")).trim();
-            String phoneNumber = ((String) payload.get("phoneNumber")).trim();
-            String managerUsername = ((String) payload.get("managerUsername")).trim();
+            // Safely extract variables from the React JSON payload to prevent NullPointerExceptions
+            String farmerNumber = payload.getOrDefault("farmerNumber", "").toString().trim();
+            String fullName = payload.getOrDefault("fullName", "").toString().trim();
+            String phoneNumber = payload.getOrDefault("phoneNumber", "").toString().trim();
+            String managerUsername = payload.getOrDefault("managerUsername", "").toString().trim();
 
-            User manager = userRepository.findByUsernameIgnoreCase(managerUsername)
-                    .orElseThrow(() -> new RuntimeException("Operating manager account context could not be resolved."));
-
-            Cooperative managerStation = manager.getCooperative();
-            if (managerStation == null) {
-                return ResponseEntity.badRequest().body("Error: Manager is not assigned to a cooperative.");
+            // Validate that the manager didn't accidentally delete the data leaving it blank
+            if (farmerNumber.isEmpty() || fullName.isEmpty() || phoneNumber.isEmpty()) {
+                return ResponseEntity.badRequest().body("Error: Farmer Number, Full Name, and Phone Number cannot be empty.");
             }
 
-            // Look for the specific farmer within THIS manager's cooperative
-            Farmer farmer = farmerRepository.findByFarmerNumberAndCooperative(farmerNumber, managerStation)
-                    .orElseThrow(() -> new RuntimeException("Farmer #" + farmerNumber + " not found in your cooperative branch."));
+            // Authenticate the manager and grab their assigned cooperative branch
+            User manager = userRepository.findByUsernameIgnoreCase(managerUsername)
+                    .orElseThrow(() -> new RuntimeException("Manager authorization failed."));
+            
+            Cooperative coop = manager.getCooperative();
 
-            // Apply the update
+            // Find the specific farmer inside THIS cooperative (so managers can't edit other branches' farmers)
+            Farmer farmer = farmerRepository.findByFarmerNumberAndCooperative(farmerNumber, coop)
+                    .orElseThrow(() -> new RuntimeException("Farmer #" + farmerNumber + " not found in your cooperative."));
+
+            // Apply the modifications
+            farmer.setFullName(fullName);
             farmer.setPhoneNumber(phoneNumber);
+
+            // Save the newly updated farmer back to PostgreSQL
             farmerRepository.save(farmer);
 
-            return ResponseEntity.ok("Phone number for Farmer #" + farmerNumber + " updated successfully.");
+            return ResponseEntity.ok("Farmer records modified successfully.");
+
         } catch (Exception e) {
-            return ResponseEntity.badRequest().body("Failed to update farmer phone record: " + e.getMessage());
+            return ResponseEntity.badRequest().body("Failed to update farmer record: " + e.getMessage());
         }
     }
 

@@ -20,4 +20,6 @@ public interface FarmerRepository extends JpaRepository<Farmer, Long> {
 
     // 💡 ADD THIS LINE TO FIX THE COMPILER ERROR
     List<Farmer> findByCooperative(Cooperative cooperative);
+    
+    long countByCooperative(com.coop.milk.models.Cooperative cooperative);
 }

@@ -12,7 +12,7 @@ export default function Navbar() {
                     {/* Brand Identity */}
                     <div className="flex items-center gap-3">
                         <div className="bg-emerald-700 p-2 rounded-xl text-white font-black tracking-wider text-sm shadow-inner">
-                            M-COOP
+                        DAILY MILK
                         </div>
                         <span className="font-bold text-lg hidden sm:block tracking-wide text-emerald-50">
                             Milk Cooperative Management System
@@ -35,7 +35,7 @@ export default function Navbar() {
                             </>
                         ) : (
                             <span className="text-emerald-300 text-xs tracking-wide uppercase font-bold">
-                                Secure Access Gateway
+                                Secure Access
                             </span>
                         )}
                     </div>

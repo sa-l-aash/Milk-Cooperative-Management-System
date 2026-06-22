@@ -27,8 +27,10 @@ export default function ManagerDashboard() {
 
     // Directory Management States
     const [farmersList, setFarmersList] = useState([]);
-    const [editingFarmer, setEditingFarmer] = useState(null);
-    const [updatedPhone, setUpdatedPhone] = useState('');
+    
+    // 💡 UPGRADED: State for Inline Editing
+    const [editingFarmerId, setEditingFarmerId] = useState(null);
+    const [editFormData, setEditFormData] = useState({ fullName: '', phoneNumber: '' });
 
     // State to handle password visibility toggle for onboarding form
     const [showPassword, setShowPassword] = useState(false);
@@ -45,7 +47,7 @@ export default function ManagerDashboard() {
     const fetchStationPricing = async () => {
         try {
             const response = await fetch(`http://localhost:8080/api/v1/managers/cooperative/rate?managerUsername=${user.identifier}`, {
-                headers: { 'Authorization': `Bearer ${user.token}` } // 💡 VIP Badge Added
+                headers: { 'Authorization': `Bearer ${user.token}` } 
             });
             if (response.ok) {
                 const data = await response.json();
@@ -64,7 +66,7 @@ export default function ManagerDashboard() {
         setLoading(true);
         try {
             const response = await fetch(`http://localhost:8080/api/v1/managers/farmers/list?managerUsername=${encodeURIComponent(trueManagerUsername)}`, {
-                headers: { 'Authorization': `Bearer ${user.token}` } // 💡 VIP Badge Added
+                headers: { 'Authorization': `Bearer ${user.token}` } 
             });
             if (response.ok) {
                 const data = await response.json();
@@ -109,7 +111,7 @@ export default function ManagerDashboard() {
                 method: 'PUT',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${user.token}` // 💡 VIP Badge Added
+                    'Authorization': `Bearer ${user.token}` 
                 },
                 body: JSON.stringify({
                     managerUsername: user.identifier,
@@ -141,7 +143,7 @@ export default function ManagerDashboard() {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${user.token}` // 💡 VIP Badge Added
+                    'Authorization': `Bearer ${user.token}` 
                 },
                 body: JSON.stringify({
                     farmerNumber: farmerNumberInput,
@@ -170,7 +172,7 @@ export default function ManagerDashboard() {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${user.token}` // 💡 VIP Badge Added
+                    'Authorization': `Bearer ${user.token}` 
                 },
                 body: JSON.stringify({
                     farmerNumber,
@@ -189,32 +191,41 @@ export default function ManagerDashboard() {
         finally { setLoading(false); }
     };
 
-    const handleUpdateFarmerPhone = async (e) => {
-        e.preventDefault();
+    // 💡 UPGRADED: Inline Edit Action Handlers
+    const handleEditClick = (farmer) => {
+        setEditingFarmerId(farmer.farmerNumber);
+        setEditFormData({ 
+            fullName: farmer.fullName || '', 
+            phoneNumber: farmer.phoneNumber || '' 
+        });
+    };
+
+    const handleSaveFarmerEdit = async (farmerNumber) => {
         setLoading(true);
         try {
-            const response = await fetch(`http://localhost:8080/api/v1/managers/farmers/update-phone`, {
+            const response = await fetch(`http://localhost:8080/api/v1/managers/farmers/update`, {
                 method: 'PUT',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${user.token}` // 💡 VIP Badge Added
+                    'Authorization': `Bearer ${user.token}` 
                 },
                 body: JSON.stringify({
-                    farmerNumber: editingFarmer.farmerNumber,
-                    phoneNumber: updatedPhone,
+                    farmerNumber: farmerNumber,
+                    fullName: editFormData.fullName,
+                    phoneNumber: editFormData.phoneNumber,
                     managerUsername: user.identifier
                 })
             });
             const text = await response.text();
             if (response.ok) {
                 setStatusMessage({ type: 'success', text: 'Farmer records modified successfully.' });
-                setEditingFarmer(null);
-                fetchCoopFarmers();
+                setEditingFarmerId(null);
+                fetchCoopFarmers(); // Refresh the table
             } else {
                 setStatusMessage({ type: 'error', text });
             }
         } catch {
-            setStatusMessage({ type: 'error', text: 'Failed to update phone record.' });
+            setStatusMessage({ type: 'error', text: 'Failed to update farmer record.' });
         } finally {
             setLoading(false);
         }
@@ -231,7 +242,7 @@ export default function ManagerDashboard() {
             const response = await fetch(`http://localhost:8080/api/v1/managers/farmers/${fNo}?managerUsername=${encodeURIComponent(trueManagerUsername)}`, {
                 method: 'DELETE',
                 headers: {
-                    'Authorization': `Bearer ${user.token}` // 💡 VIP Badge Added
+                    'Authorization': `Bearer ${user.token}` 
                 }
             });
             const text = await response.text();
@@ -254,7 +265,6 @@ export default function ManagerDashboard() {
             {/* Header Display Panel - Full Responsive Flex Stack */}
             <div className="border-b border-slate-200 pb-5 flex flex-col md:flex-row md:items-center md:justify-between gap-4">
                 <div className="space-y-2">
-                    {/* Unified Branch Identity Layout Group */}
                     <div className="flex flex-wrap items-center gap-2">
                         <span className="text-[11px] sm:text-xs font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full shadow-sm">
                             Cooperative: {user.cooperativeName}
@@ -274,43 +284,30 @@ export default function ManagerDashboard() {
                     </p>
                 </div>
 
-                {/* Tab Switcher Navigation Section (Wraps beautifully on tiny screens) */}
                 <div className="bg-slate-200/70 p-1 rounded-xl flex flex-row flex-wrap gap-1 self-start md:self-center w-full sm:w-auto overflow-hidden">
-                    <button
-                        onClick={() => { setActiveTab('collection'); setStatusMessage({ type: '', text: '' }); }}
-                        className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'collection' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                    >
+                    <button onClick={() => { setActiveTab('collection'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'collection' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
                         Daily Milk Recording
                     </button>
-                    <button
-                        onClick={() => { setActiveTab('onboarding'); setStatusMessage({ type: '', text: '' }); }}
-                        className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'onboarding' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                    >
+                    <button onClick={() => { setActiveTab('onboarding'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'onboarding' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
                         Farmer Onboarding
                     </button>
-                    <button
-                        onClick={() => { setActiveTab('directory'); setStatusMessage({ type: '', text: '' }); }}
-                        className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'directory' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}
-                    >
+                    <button onClick={() => { setActiveTab('directory'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'directory' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
                         Farmer List
                     </button>
                 </div>
             </div>
 
             {statusMessage.text && (
-                <div className={`p-3.5 border text-xs font-semibold rounded-xl animate-shake flex items-center gap-2 ${statusMessage.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-100 text-rose-800'
-                    }`}>
+                <div className={`p-3.5 border text-xs font-semibold rounded-xl animate-shake flex items-center gap-2 ${statusMessage.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-rose-50 border-rose-100 text-rose-800'}`}>
                     <span className={`h-1.5 w-1.5 rounded-full ${statusMessage.type === 'success' ? 'bg-emerald-500' : 'bg-rose-500'}`}></span>
                     <span className="break-words">{statusMessage.text}</span>
                 </div>
             )}
 
-            {/* Core Workspace Layout Section Grid Split */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 items-start">
-
-                {/* Left Primary Form Component Container Box */}
                 <div className="bg-white border border-slate-200/60 rounded-2xl p-4 sm:p-6 shadow-sm lg:col-span-2 order-2 lg:order-1">
-
+                    
+                    {/* Collection Tab */}
                     {activeTab === 'collection' && (
                         <div className="space-y-4">
                             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-50 pb-2">
@@ -357,6 +354,7 @@ export default function ManagerDashboard() {
                         </div>
                     )}
 
+                    {/* Onboarding Tab */}
                     {activeTab === 'onboarding' && (
                         <div className="space-y-4">
                             <div>
@@ -397,39 +395,26 @@ export default function ManagerDashboard() {
                                                 value={farmerPassword} 
                                                 onChange={(e) => setFarmerPassword(e.target.value)} 
                                                 className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-emerald-600 focus:outline-none pr-10" 
-                                                placeholder="" 
                                                 required 
                                             />
-                                            <button
-                                                type="button"
-                                                onClick={() => setShowPassword(!showPassword)}
-                                                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none"
-                                            >
+                                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 focus:outline-none">
                                                 {showPassword ? (
-                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 01-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" />
-                                                    </svg>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M3.98 8.223A10.477 10.477 0 001.934 12C3.226 16.338 7.244 19.5 12 19.5c.993 0 1.953-.138 2.863-.395M6.228 6.228A10.451 10.451 0 0112 4.5c4.756 0 8.773 3.162 10.065 7.498a10.522 10.522 0 01-4.293 5.774M6.228 6.228 3 3m3.228 3.228 3.65 3.65m7.894 7.894L21 21m-3.228-3.228-3.65-3.65m0 0a3 3 0 10-4.243-4.243m4.242 4.242L9.88 9.88" /></svg>
                                                 ) : (
-                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4">
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" />
-                                                        <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0Z" />
-                                                    </svg>
+                                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-4 h-4"><path strokeLinecap="round" strokeLinejoin="round" d="M2.036 12.322a1.012 1.012 0 010-.639C3.423 7.51 7.36 4.5 12 4.5c4.638 0 8.573 3.007 9.963 7.178.07.207.07.431 0 .639C20.577 16.49 16.64 19.5 12 19.5c-4.638 0-8.573-3.007-9.963-7.178Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0Z" /></svg>
                                                 )}
                                             </button>
                                         </div>
                                     </div>
                                 </div>
-                                <button
-                                    type="submit"
-                                    disabled={loading}
-                                    className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-semibold py-2.5 rounded-xl transition text-xs mt-2 disabled:bg-slate-200 disabled:text-slate-400 shadow-sm"
-                                >
+                                <button type="submit" disabled={loading} className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-semibold py-2.5 rounded-xl transition text-xs mt-2 disabled:bg-slate-200 disabled:text-slate-400 shadow-sm">
                                     {loading ? "Registering Node..." : "Submit"}
                                 </button>
                             </form>
                         </div>
                     )}
 
+                    {/* Directory Tab */}
                     {activeTab === 'directory' && (
                         <div className="space-y-4">
                             <div>
@@ -437,40 +422,12 @@ export default function ManagerDashboard() {
                                 <p className="text-slate-400 text-xs mt-0.5">Review and manage all registered farmers assigned to this cooperative.</p>
                             </div>
 
-                            {/* Inline Modal Edit Form Component Block */}
-                            {editingFarmer && (
-                                <form onSubmit={handleUpdateFarmerPhone} className="bg-slate-50 border border-slate-200 rounded-xl p-4 animate-fade-in space-y-3">
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-xs font-bold text-slate-700 uppercase tracking-wide truncate pr-2">
-                                            Modify Records: <span className="font-mono text-emerald-700">#{editingFarmer.farmerNumber}</span> - {editingFarmer.fullName}
-                                        </span>
-                                        <button type="button" onClick={() => setEditingFarmer(null)} className="text-slate-400 hover:text-slate-600 text-xs font-bold shrink-0">✕ Close</button>
-                                    </div>
-                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 items-end">
-                                        <div>
-                                            <label className="block text-[10px] font-bold uppercase text-slate-500 mb-1">New Mobile Phone Number</label>
-                                            <input
-                                                type="tel"
-                                                value={updatedPhone}
-                                                onChange={(e) => setUpdatedPhone(e.target.value)}
-                                                className="w-full px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs"
-                                                required
-                                            />
-                                        </div>
-                                        <button type="submit" disabled={loading} className="bg-emerald-700 hover:bg-emerald-800 text-white font-bold py-2 px-4 rounded-lg text-xs transition w-full">
-                                            Save Phone Number
-                                        </button>
-                                    </div>
-                                </form>
-                            )}
-
-                            {/* Table Scroll Axis Shell Container Wrapper */}
                             <div className="w-full overflow-x-auto border border-slate-200/60 rounded-xl block max-w-full">
                                 <table className="w-full min-w-[500px] text-left text-xs border-collapse">
                                     <thead>
                                         <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold tracking-wider text-[10px]">
                                             <th className="p-3 whitespace-nowrap">ID Code</th>
-                                            <th className="p-3 whitespace-nowrap">Full  Name</th>
+                                            <th className="p-3 whitespace-nowrap">Full Name</th>
                                             <th className="p-3 whitespace-nowrap">Phone Number</th>
                                             <th className="p-3 text-right whitespace-nowrap">Administrative Actions</th>
                                         </tr>
@@ -484,25 +441,56 @@ export default function ManagerDashboard() {
                                             farmersList.map((farmer) => (
                                                 <tr key={farmer.farmerNumber} className="hover:bg-slate-50/60 transition">
                                                     <td className="p-3 font-mono font-bold text-slate-900">{farmer.farmerNumber}</td>
-                                                    <td className="p-3 text-slate-900 font-bold">{farmer.fullName}</td>
-                                                    <td className="p-3 text-slate-500 font-mono">{farmer.phoneNumber}</td>
-                                                    <td className="p-3 text-right space-x-2 whitespace-nowrap">
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => { setEditingFarmer(farmer); setUpdatedPhone(farmer.phoneNumber); }}
-                                                            className="text-emerald-700 hover:text-emerald-900 hover:underline text-xs font-bold inline-block"
-                                                        >
-                                                            Edit
-                                                        </button>
-                                                        <span className="text-slate-200">|</span>
-                                                        <button
-                                                            type="button"
-                                                            onClick={() => handleDeleteFarmer(farmer.farmerNumber)}
-                                                            className="text-rose-600 hover:text-rose-800 hover:underline text-xs font-bold inline-block"
-                                                        >
-                                                            Delete
-                                                        </button>
-                                                    </td>
+                                                    
+                                                    {/* 💡 INLINE EDITING LOGIC */}
+                                                    {editingFarmerId === farmer.farmerNumber ? (
+                                                        <>
+                                                            <td className="p-2">
+                                                                <input 
+                                                                    type="text" 
+                                                                    value={editFormData.fullName} 
+                                                                    onChange={(e) => setEditFormData({ ...editFormData, fullName: e.target.value })} 
+                                                                    className="w-full border border-slate-300 rounded px-2 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none" 
+                                                                />
+                                                            </td>
+                                                            <td className="p-2">
+                                                                <input 
+                                                                    type="tel" 
+                                                                    value={editFormData.phoneNumber} 
+                                                                    onChange={(e) => setEditFormData({ ...editFormData, phoneNumber: e.target.value })} 
+                                                                    className="w-full border border-slate-300 rounded px-2 py-1.5 text-xs focus:ring-2 focus:ring-emerald-500 outline-none" 
+                                                                />
+                                                            </td>
+                                                            <td className="p-3 text-right whitespace-nowrap">
+                                                                <div className="flex justify-end gap-2">
+                                                                    <button onClick={() => handleSaveFarmerEdit(farmer.farmerNumber)} disabled={loading} className="text-emerald-600 hover:text-emerald-800 font-bold text-xs bg-emerald-50 px-3 py-1.5 rounded-lg transition">Save</button>
+                                                                    <button onClick={() => setEditingFarmerId(null)} className="text-slate-500 hover:text-slate-700 font-bold text-xs bg-slate-100 px-3 py-1.5 rounded-lg transition">Cancel</button>
+                                                                </div>
+                                                            </td>
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <td className="p-3 text-slate-900 font-bold">{farmer.fullName}</td>
+                                                            <td className="p-3 text-slate-500 font-mono">{farmer.phoneNumber}</td>
+                                                            <td className="p-3 text-right space-x-2 whitespace-nowrap">
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleEditClick(farmer)}
+                                                                    className="text-emerald-700 hover:text-emerald-900 hover:underline text-xs font-bold inline-block"
+                                                                >
+                                                                    Edit
+                                                                </button>
+                                                                <span className="text-slate-200">|</span>
+                                                                <button
+                                                                    type="button"
+                                                                    onClick={() => handleDeleteFarmer(farmer.farmerNumber)}
+                                                                    className="text-rose-600 hover:text-rose-800 hover:underline text-xs font-bold inline-block"
+                                                                >
+                                                                    Delete
+                                                                </button>
+                                                            </td>
+                                                        </>
+                                                    )}
                                                 </tr>
                                             ))
                                         )}
@@ -513,10 +501,8 @@ export default function ManagerDashboard() {
                     )}
                 </div>
 
-                {/* Right Sidebar Column - Rates & Operational Rules Context */}
+                {/* Right Sidebar Column */}
                 <div className="space-y-6 lg:col-span-1 order-1 lg:order-2">
-
-                    {/* CONTEXT CONDITIONAL LOCK: Rate form ONLY pops up if 'Intake Desk' tab is selected */}
                     {activeTab === 'collection' && (
                         <form onSubmit={handleUpdateRate} className="bg-slate-900 text-white border border-slate-800 rounded-2xl p-4 sm:p-6 space-y-4 shadow-sm animate-fade-in">
                             <div>
@@ -525,7 +511,6 @@ export default function ManagerDashboard() {
                                     Modify your station's current purchasing price structure per liter. Changes update farmer views instantly.
                                 </p>
                             </div>
-
                             <div className="pt-2">
                                 <label className="block text-[9px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">New Buying Price (KSH / Liter)</label>
                                 <input
@@ -538,7 +523,6 @@ export default function ManagerDashboard() {
                                     required
                                 />
                             </div>
-
                             <button type="submit" disabled={loading} className="w-full bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold py-2.5 rounded-xl text-xs transition disabled:bg-slate-800 disabled:text-slate-500 shadow-sm">
                                 Broadcast New Buying Rate
                             </button>
@@ -550,7 +534,6 @@ export default function ManagerDashboard() {
                         <p className="text-xs text-slate-500 leading-relaxed">
                             Onboarding details are auto-assigned to your cooperative. Active rate indices govern current transaction weights to prevent compliance friction.
                         </p>
-
                     </div>
                 </div>
             </div>

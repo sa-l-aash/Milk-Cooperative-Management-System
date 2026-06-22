@@ -51,7 +51,7 @@ export default function Login() {
                     <div className="relative z-10 animate-fade-in space-y-4">
                         <div className="flex items-center gap-2">
                             <span className="text-xl font-black tracking-wider bg-white/10 px-3 py-1.5 rounded-xl border border-white/10 backdrop-blur-sm">
-                                M-COOP
+                                DAILY MILK
                             </span>
                             <div className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse"></div>
                         </div>
@@ -60,7 +60,7 @@ export default function Login() {
                                 Smart Dairy Logistics Platform
                             </h1>
                             <p className="text-emerald-100/80 text-xs font-medium leading-relaxed max-w-sm">
-                                Empowering local farmers and cooperative clusters with real-time transactional ledger and intake inventory tracking.
+                                Empowering local dairy farmers and cooperative clusters with real-time transactional ledger and intake inventory tracking.
                             </p>
                         </div>
                     </div>
@@ -72,8 +72,8 @@ export default function Login() {
                 {/* Form Inputs Side Panel */}
                 <div className="p-6 sm:p-8 md:w-1/2 flex flex-col justify-center bg-white">
                     <div className="mb-6">
-                        <h2 className="text-xl font-bold text-slate-900 tracking-tight">Welcome Back</h2>
-                        <p className="text-slate-500 text-xs mt-1">Please enter your credentials to access the cooperative system workspace.</p>
+                        <h2 className="text-xl font-bold text-slate-900 tracking-tight">Login to your account</h2>
+                        <p className="text-slate-500 text-xs mt-1">Please enter your credentials to access the cooperative system.</p>
                     </div>
 
                     {error && (
@@ -93,7 +93,7 @@ export default function Login() {
                                 value={identifier}
                                 onChange={(e) => setIdentifier(e.target.value)}
                                 className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white transition-all duration-200 text-sm"
-                                placeholder="e.g., manager_sk or 10025"
+                                placeholder="e.g., john_doe or 0001"
                                 required
                             />
                         </div>
@@ -108,7 +108,7 @@ export default function Login() {
                                     value={password}
                                     onChange={(e) => setPassword(e.target.value)}
                                     className="w-full px-4 py-2.5 bg-slate-50/50 border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:bg-white transition-all duration-200 text-sm pr-10"
-                                    placeholder="••••••••"
+                                    placeholder="••••"
                                     required
                                 />
                                 <button
@@ -138,7 +138,7 @@ export default function Login() {
                             {loading ? (
                                 <div className="h-5 w-5 border-2 border-slate-400 border-t-emerald-700 rounded-full animate-spin"></div>
                             ) : (
-                                "Sign In to System"
+                                "Log In"
                             )}
                         </button>
                     </form>

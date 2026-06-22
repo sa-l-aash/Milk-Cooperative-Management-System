@@ -11,4 +11,6 @@ public interface UserRepository extends JpaRepository<User, Long> {
     // Custom query method that Spring Data JPA automatically converts into:
     // SELECT * FROM users WHERE username = ?;
     Optional<User> findByUsernameIgnoreCase(String username);
+
+    java.util.Optional<com.coop.milk.models.User> findFirstByCooperative(com.coop.milk.models.Cooperative cooperative);
 }
