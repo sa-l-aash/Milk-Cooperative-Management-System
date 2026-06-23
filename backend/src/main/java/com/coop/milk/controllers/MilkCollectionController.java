@@ -68,7 +68,7 @@ public class MilkCollectionController {
             MilkDelivery savedDelivery = milkDeliveryRepository.save(delivery);
 
             return ResponseEntity.ok("Intake recorded! Registered " + savedDelivery.getQuantityLiters() + 
-                    " Liters for " + farmer.getFullName() + ". Total value: KSH " + savedDelivery.getTotalPayout());
+                    " Liters for " + farmer.getFullName() + ".");
 
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Collection logging rejected: " + e.getMessage());
@@ -79,5 +79,19 @@ public class MilkCollectionController {
     @GetMapping("/farmer/{farmerId}")
     public ResponseEntity<List<MilkDelivery>> getFarmerDeliveryHistory(@PathVariable Long farmerId) {
         return ResponseEntity.ok(milkDeliveryRepository.findByFarmerFarmerId(farmerId));
+    }
+
+    // =========================================================================
+    // 💡 NEW: Endpoint explicitly built for the Analytics Graph
+    // =========================================================================
+    @GetMapping("/farmer/{farmerNumber}/analytics")
+    public ResponseEntity<?> getFarmerAnalytics(@PathVariable String farmerNumber) {
+        try {
+            // Spring Boot parses "findByFarmer_FarmerNumber..." to look inside the Farmer table!
+            List<MilkDelivery> records = milkDeliveryRepository.findByFarmer_FarmerNumberOrderByDeliveryDateAsc(farmerNumber);
+            return ResponseEntity.ok(records);
+        } catch (Exception e) {
+            return ResponseEntity.badRequest().body("Failed to fetch analytics: " + e.getMessage());
+        }
     }
 }

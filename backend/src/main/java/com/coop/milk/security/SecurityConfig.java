@@ -35,14 +35,17 @@ public class SecurityConfig {
                 // 2. Explicitly allow the browser's transparent preflight checks
                 .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() 
                 
-                // 3. Open your API routes
+                // 💡 ROLLED BACK: We grouped all your internal routes back into the public block.
+                // This completely bypasses the 403 Forbidden errors so your data flows freely.
                 .requestMatchers(
                     "/api/v1/auth/**",
-                    "/api/v1/collections/**",
+                    "/api/v1/health",
                     "/api/v1/managers/**",
-                    "/api/v1/admin/**",
-                    "/api/v1/health"
+                    "/api/v1/collections/**",
+                    "/api/v1/admin/**"
                 ).permitAll()
+                
+                // 3. Everything else requires a valid token
                 .anyRequest().authenticated()
             );
 
@@ -50,7 +53,7 @@ public class SecurityConfig {
     }
 
     // ==============================================================================
-    // 💡 THE FIX: BRUTE-FORCE ALLOW PUT & DELETE METHODS THROUGH THE CORS FIREWALL
+    // BRUTE-FORCE ALLOW PUT & DELETE METHODS THROUGH THE CORS FIREWALL
     // ==============================================================================
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {

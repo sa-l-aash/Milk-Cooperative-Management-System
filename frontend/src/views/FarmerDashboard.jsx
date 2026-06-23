@@ -17,13 +17,17 @@ export default function FarmerDashboard() {
     const fullName = user?.identifier || 'Registered Producer';
     const farmerNumber = localStorage.getItem("farmerNo") || '0002';
 
-    // ==================== SECURITY LOGOUT GUARD ====================
-    useEffect(() => {
-        if (!user) {
-            navigate('/', { replace: true });
-        }
-    }, [user, navigate]);
-    // ===============================================================
+// ==================== STRICT ROLE & SECURITY GUARD ====================
+  useEffect(() => {
+    if (!user) {
+      navigate("/", { replace: true });
+    } else if (user.role === 'ADMIN') {
+      navigate('/admin-dashboard', { replace: true });
+    } else if (user.role === 'MANAGER') {
+      navigate('/manager-dashboard', { replace: true });
+    }
+  }, [user, navigate]);
+  // ======================================================================
 
     useEffect(() => {
         if (!user) return;

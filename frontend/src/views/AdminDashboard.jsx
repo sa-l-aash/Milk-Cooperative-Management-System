@@ -9,7 +9,7 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState("deployment");
 
   // Form State: Deployment
-  const [coopCode, setCoopCode] = useState(""); // 💡 NEW: Added coopCode state
+  const [coopCode, setCoopCode] = useState(""); 
   const [coopName, setCoopName] = useState("");
   const [county, setCounty] = useState("");
   const [subCounty, setSubCounty] = useState("");
@@ -19,11 +19,12 @@ export default function AdminDashboard() {
   // State: Cooperative Management
   const [cooperatives, setCooperatives] = useState([]);
   const [loadingData, setLoadingData] = useState(false);
+  const [searchQuery, setSearchQuery] = useState(""); // 💡 NEW: Search bar state
 
   // State for Inline Editing
   const [editingCoopId, setEditingCoopId] = useState(null);
   const [editFormData, setEditFormData] = useState({
-    coopCode: "", // 💡 NEW: Added to edit state
+    coopCode: "", 
     name: "",
     county: "",
     subCounty: "",
@@ -35,10 +36,17 @@ export default function AdminDashboard() {
   const [status, setStatus] = useState({ type: "", text: "" });
   const [showPassword, setShowPassword] = useState(false);
 
+// ==================== STRICT ROLE & SECURITY GUARD ====================
   useEffect(() => {
-    if (!user) navigate("/", { replace: true });
+    if (!user) {
+      navigate("/", { replace: true });
+    } else if (user.role === 'MANAGER') {
+      navigate('/manager-dashboard', { replace: true });
+    } else if (user.role === 'FARMER') {
+      navigate('/farmer-dashboard', { replace: true });
+    }
   }, [user, navigate]);
-
+  // ======================================================================
   const fetchCooperatives = async () => {
     setLoadingData(true);
     try {
@@ -46,7 +54,7 @@ export default function AdminDashboard() {
         "http://localhost:8080/api/v1/admin/cooperatives",
         {
           headers: { Authorization: `Bearer ${user?.token}` },
-        },
+        }
       );
       if (response.ok) {
         const data = await response.json();
@@ -60,7 +68,10 @@ export default function AdminDashboard() {
   };
 
   useEffect(() => {
-    if (activeTab === "manage") fetchCooperatives();
+    if (activeTab === "manage") {
+        fetchCooperatives();
+        setSearchQuery(""); // Clear search when tab opens
+    }
   }, [activeTab]);
 
   if (!user)
@@ -85,14 +96,14 @@ export default function AdminDashboard() {
             Authorization: `Bearer ${user.token}`,
           },
           body: JSON.stringify({
-            coopCode, // 💡 NEW: Included in the payload
+            coopCode, 
             coopName,
             county,
             subCounty,
             managerUsername: managerName,
             managerPassword,
           }),
-        },
+        }
       );
       const resultText = await response.text();
       if (response.ok) {
@@ -125,7 +136,7 @@ export default function AdminDashboard() {
   const handleEditClick = (coop) => {
     setEditingCoopId(coop.cooperativeId);
     setEditFormData({
-      coopCode: coop.coopCode || "", // 💡 NEW: Load current code
+      coopCode: coop.coopCode || "", 
       name: coop.name,
       county: coop.county,
       subCounty: coop.subCounty,
@@ -144,8 +155,8 @@ export default function AdminDashboard() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${user.token}`,
           },
-          body: JSON.stringify(editFormData), // Sends coopCode automatically now
-        },
+          body: JSON.stringify(editFormData), 
+        }
       );
       const text = await response.text();
       if (response.ok) {
@@ -154,7 +165,7 @@ export default function AdminDashboard() {
           text: "Cooperative updated successfully.",
         });
         setEditingCoopId(null);
-        fetchCooperatives(); // Refresh the table
+        fetchCooperatives(); 
       } else {
         setStatus({ type: "error", text });
       }
@@ -171,7 +182,7 @@ export default function AdminDashboard() {
   const handleDeleteCoop = async (id, name) => {
     if (
       !window.confirm(
-        `CRITICAL WARNING: Are you sure you want to permanently delete '${name}'?\n\nThis will also delete the station manager and all farmers assigned to this cooperative.`,
+        `CRITICAL WARNING: Are you sure you want to permanently delete '${name}'?\n\nThis will also delete the station manager and all farmers assigned to this cooperative.`
       )
     )
       return;
@@ -183,7 +194,7 @@ export default function AdminDashboard() {
         {
           method: "DELETE",
           headers: { Authorization: `Bearer ${user.token}` },
-        },
+        }
       );
       const text = await response.text();
       if (response.ok) {
@@ -191,7 +202,7 @@ export default function AdminDashboard() {
           type: "success",
           text: "Cooperative eradicated from system.",
         });
-        fetchCooperatives(); // Refresh the table
+        fetchCooperatives(); 
       } else {
         setStatus({ type: "error", text });
       }
@@ -215,6 +226,18 @@ export default function AdminDashboard() {
       year: "numeric",
     });
   };
+
+  // 💡 NEW: Real-time Universal Filter Logic
+  const filteredCooperatives = cooperatives.filter((coop) => {
+    const query = searchQuery.toLowerCase();
+    const matchName = (coop.name || "").toLowerCase().includes(query);
+    const matchCode = (coop.coopCode || "").toLowerCase().includes(query);
+    const matchCounty = (coop.county || "").toLowerCase().includes(query);
+    const matchSubCounty = (coop.subCounty || "").toLowerCase().includes(query);
+    const matchManager = (coop.managerName || "").toLowerCase().includes(query);
+
+    return matchName || matchCode || matchCounty || matchSubCounty || matchManager;
+  });
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10 space-y-6 sm:space-y-8 animate-fade-in antialiased">
@@ -294,7 +317,6 @@ export default function AdminDashboard() {
                 />
               </div>
 
-              {/* 💡 NEW: Cooperative Code Field inserted directly below Cooperative Name */}
               <div>
                 <label className="block text-[11px] font-bold uppercase tracking-wide text-slate-600 mb-2 flex justify-between items-center">
                   <span>Cooperative Code</span>
@@ -434,14 +456,30 @@ export default function AdminDashboard() {
       {/* TAB 2: MANAGE COOPERATIVES */}
       {activeTab === "manage" && (
         <div className="bg-white border border-slate-200/60 rounded-2xl p-5 sm:p-8 shadow-sm space-y-6">
-          <div>
-            <h2 className="text-lg sm:text-xl font-bold text-slate-900">
-              Cooperative Directory
-            </h2>
-            <p className="text-slate-500 text-xs sm:text-sm mt-1">
-              Overview of all active stations, their managers, and geographical
-              footprints.
-            </p>
+          
+          {/* 💡 NEW: Header area converted to flex container for Search Bar */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900">
+                Cooperative Directory
+              </h2>
+              <p className="text-slate-500 text-xs sm:text-sm mt-1">
+                Overview of all active stations, their managers, and locations.
+              </p>
+            </div>
+            
+            <div className="relative w-full sm:w-72">
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="Search code, name, location..."
+                className="w-full pl-10 pr-4 py-2 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-emerald-600 bg-slate-50 focus:bg-white transition-all text-slate-700 font-medium"
+              />
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+              </svg>
+            </div>
           </div>
 
           <div className="w-full overflow-x-auto border border-slate-200/60 rounded-xl block max-w-full shadow-inner">
@@ -449,11 +487,9 @@ export default function AdminDashboard() {
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-200 text-slate-500 uppercase font-bold tracking-wider text-[11px]">
                   <th className="p-4 whitespace-nowrap">ID</th>
-                  <th className="p-4 whitespace-nowrap">Coop Code</th> {/* 💡 NEW COLUMN HEADER */}
+                  <th className="p-4 whitespace-nowrap">Coop Code</th> 
                   <th className="p-4 whitespace-nowrap">Cooperative Name</th>
-                  <th className="p-4 whitespace-nowrap">
-                    Location (County / Sub)
-                  </th>
+                  <th className="p-4 whitespace-nowrap">Location (County / Sub)</th>
                   <th className="p-4 whitespace-nowrap">Manager</th>
                   <th className="p-4 whitespace-nowrap">Farmers</th>
                   <th className="p-4 whitespace-nowrap">Registration Date</th>
@@ -463,24 +499,21 @@ export default function AdminDashboard() {
               <tbody className="divide-y divide-slate-100 font-medium text-slate-700">
                 {loadingData ? (
                   <tr>
-                    <td
-                      colSpan="8"
-                      className="text-center p-10 text-slate-400 text-sm"
-                    >
+                    <td colSpan="8" className="text-center p-10 text-slate-400 text-sm">
                       Loading infrastructure data...
                     </td>
                   </tr>
-                ) : cooperatives.length === 0 ? (
+                ) : filteredCooperatives.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan="8"
-                      className="text-center p-10 text-slate-400 text-sm"
-                    >
-                      No active cooperatives deployed in the network yet.
+                    <td colSpan="8" className="text-center p-10 text-slate-400 text-sm">
+                      {cooperatives.length === 0 
+                        ? "No active cooperatives deployed in the network yet." 
+                        : "No cooperatives match your search criteria."}
                     </td>
                   </tr>
                 ) : (
-                  cooperatives.map((coop) => (
+                  // 💡 NEW: Map over filteredCooperatives instead of cooperatives
+                  filteredCooperatives.map((coop) => (
                     <tr
                       key={coop.cooperativeId}
                       className="hover:bg-slate-50/60 transition"
@@ -489,7 +522,7 @@ export default function AdminDashboard() {
                         #{coop.cooperativeId}
                       </td>
 
-                      {/* 💡 INLINE EDITING LOGIC */}
+                      {/* INLINE EDITING LOGIC */}
                       {editingCoopId === coop.cooperativeId ? (
                         <>
                           <td className="p-2">
@@ -584,7 +617,6 @@ export default function AdminDashboard() {
                         {formatDate(coop.timestamp)}
                       </td>
 
-                      {/* Action Buttons */}
                       <td className="p-4 text-right whitespace-nowrap">
                         {editingCoopId === coop.cooperativeId ? (
                           <div className="flex justify-end gap-3">
