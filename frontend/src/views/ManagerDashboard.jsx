@@ -1,17 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useNavigate, useLocation } from 'react-router-dom';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 // 💡 IMPORT THE NEW COMMAND CENTER
 import CoopOverview from './CoopOverview'; 
 
 export default function ManagerDashboard() {
     const { user } = useAuth(); 
-
     const navigate = useNavigate();
     const location = useLocation();
     
-    // 💡 NEW: Default to the 'overview' Command Center
+    // UI & Navigation State
     const [activeTab, setActiveTab] = useState(location.state?.targetTab || 'overview');
     const [statusMessage, setStatusMessage] = useState({ type: '', text: '' });
     const [loading, setLoading] = useState(false);
@@ -30,19 +31,21 @@ export default function ManagerDashboard() {
     const [fullName, setFullName] = useState('');
     const [phoneNumber, setPhoneNumber] = useState('+254');
     const [farmerPassword, setFarmerPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
 
     // Directory Management States
     const [farmersList, setFarmersList] = useState([]);
     const [searchQuery, setSearchQuery] = useState(''); 
-    
-    // State for Inline Editing
     const [editingFarmerId, setEditingFarmerId] = useState(null);
     const [editFormData, setEditFormData] = useState({ fullName: '', phoneNumber: '' });
 
-    // State to handle password visibility toggle for onboarding form
-    const [showPassword, setShowPassword] = useState(false);
+    // Reports & Statements State
+    const [statements, setStatements] = useState([]);
+    const [coopStatements, setCoopStatements] = useState([]); 
+    const [loadingStatements, setLoadingStatements] = useState(false);
+    const [hasUnreadStatement, setHasUnreadStatement] = useState(true);
 
-   // ==================== STRICT ROLE & SECURITY GUARD ====================
+    // ==================== STRICT ROLE & SECURITY GUARD ====================
     useEffect(() => {
         if (!user) {
             navigate('/', { replace: true });
@@ -54,7 +57,7 @@ export default function ManagerDashboard() {
     }, [user, navigate]);
     // ======================================================================
 
-    // Fetch active cooperative base rate on layout mount
+    // Fetch active cooperative base rate
     const fetchStationPricing = async () => {
         try {
             const response = await fetch(`http://localhost:8080/api/v1/managers/cooperative/rate?managerUsername=${user.identifier}`, {
@@ -78,12 +81,9 @@ export default function ManagerDashboard() {
             const response = await fetch(`http://localhost:8080/api/v1/managers/farmers/list?managerUsername=${encodeURIComponent(trueManagerUsername)}`, {
                 headers: { 'Authorization': `Bearer ${user.token}` } 
             });
-            
             if (response.ok) {
                 const data = await response.json();
                 setFarmersList(data);
-            } else {
-                console.error("Failed to load local branch user logs. Status:", response.status);
             }
         } catch (error) {
             console.error("Directory context sync failure.", error);
@@ -92,83 +92,136 @@ export default function ManagerDashboard() {
         }
     };
 
+    // FETCH & GROUP STATEMENTS BY MONTH
     useEffect(() => {
-        if (user?.identifier) {
-            fetchStationPricing();
+        if (activeTab === 'reports') {
+            const fetchManagerStatements = async () => {
+                setLoadingStatements(true);
+                try {
+                    const response = await fetch(`http://localhost:8080/api/v1/statements/manager/${user.identifier}`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        setStatements(data);
+
+                        // Automatically group individual statements into Master Monthly Records
+                        const grouped = data.reduce((acc, stmt) => {
+                            if (!acc[stmt.statementMonth]) {
+                                acc[stmt.statementMonth] = {
+                                    month: stmt.statementMonth,
+                                    totalVolume: 0,
+                                    totalPayout: 0,
+                                    farmerRecords: []
+                                };
+                            }
+
+                            // Look up the farmer's real name from the Directory state
+                            const farmerObj = farmersList.find(f => f.farmerNumber === stmt.farmerNumber);
+                            const farmerName = farmerObj ? farmerObj.fullName : 'Unknown Farmer';
+
+                            acc[stmt.statementMonth].totalVolume += stmt.totalVolumeLiters;
+                            acc[stmt.statementMonth].totalPayout += stmt.totalPayoutKsh;
+                            acc[stmt.statementMonth].farmerRecords.push({
+                                farmerNumber: stmt.farmerNumber,
+                                farmerName: farmerName,
+                                volume: stmt.totalVolumeLiters,
+                                payout: stmt.totalPayoutKsh
+                            });
+
+                            return acc;
+                        }, {});
+
+                        setCoopStatements(Object.values(grouped));
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch statements:", err);
+                } finally {
+                    setLoadingStatements(false);
+                }
+            };
+            fetchManagerStatements();
         }
-    }, [user]);
+    }, [activeTab, user.identifier, farmersList]);
 
-    useEffect(() => {
-        if (activeTab === 'directory') {
-            fetchCoopFarmers();
-            setSearchQuery(''); 
-        }
-    }, [activeTab]);
+    // THE MASTER COOPERATIVE PDF GENERATOR
+    const downloadCoopPDF = (monthGroup) => {
+        const doc = new jsPDF();
+        doc.setFontSize(18);
+        doc.text(`${user.cooperativeName} - Master Ledger`, 14, 20);
+        doc.setFontSize(11);
+        doc.text(`Authorized Manager: ${user.identifier}`, 14, 30);
+        doc.text(`For the month of: ${monthGroup.month}`, 14, 37);
 
-    if (!user) {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-slate-50 text-xs font-semibold text-slate-500">
-                Redirecting secure session context...
-            </div>
-        );
-    }
+        // Map a row for every single farmer in the cooperative
+        const tableRows = monthGroup.farmerRecords.map(r => [
+            r.farmerNumber,
+            r.farmerName,
+            r.volume.toFixed(2),
+            r.payout.toLocaleString()
+        ]);
 
+        // Add the Cooperative Grand Total at the bottom
+        tableRows.push([
+            { content: 'COOPERATIVE GRAND TOTAL', colSpan: 2, styles: { fontStyle: 'bold', halign: 'right', fillColor: [241, 245, 249] } },
+            { content: `${monthGroup.totalVolume.toFixed(2)} L`, styles: { fontStyle: 'bold', fillColor: [241, 245, 249] } },
+            { content: `KES ${monthGroup.totalPayout.toLocaleString()}`, styles: { fontStyle: 'bold', textColor: [4, 120, 87], fillColor: [241, 245, 249] } }
+        ]);
+
+        autoTable(doc, {
+            startY: 45,
+            head: [['Farmer ID', 'Farmer Name', 'Volume (Liters)', 'Payout (KES)']],
+            body: tableRows,
+            theme: 'striped',
+            headStyles: { fillColor: [15, 23, 42] },
+            styles: { fontSize: 9 }
+        });
+
+        doc.save(`Coop_Ledger_${monthGroup.month}.pdf`);
+    };
+
+    // Filter Logic for Directory
+    const filteredFarmers = farmersList.filter((farmer) => {
+        const query = searchQuery.toLowerCase();
+        const matchNumber = (farmer.farmerNumber || "").toLowerCase().includes(query);
+        const matchName = (farmer.fullName || "").toLowerCase().includes(query);
+        const matchPhone = (farmer.phoneNumber || "").toLowerCase().includes(query);
+        return matchNumber || matchName || matchPhone;
+    });
+
+    // HANDLERS
     const handleUpdateRate = async (e) => {
         e.preventDefault();
         setLoading(true);
         setStatusMessage({ type: '', text: '' });
-
         try {
             const response = await fetch('http://localhost:8080/api/v1/managers/cooperative/rate', {
                 method: 'PUT',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${user.token}` 
-                },
-                body: JSON.stringify({
-                    managerUsername: user.identifier,
-                    newRate: parseFloat(newRateInput)
-                })
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+                body: JSON.stringify({ managerUsername: user.identifier, newRate: parseFloat(newRateInput) })
             });
             const text = await response.text();
             if (response.ok) {
                 setStatusMessage({ type: 'success', text: 'Operational purchasing rate updated successfully!' });
                 setCurrentRate(parseFloat(newRateInput));
                 setNewRateInput('');
-            } else {
-                setStatusMessage({ type: 'error', text });
-            }
-        } catch {
-            setStatusMessage({ type: 'error', text: 'Failed to broadcast new rate matrix.' });
-        } finally {
-            setLoading(false);
-        }
+            } else { setStatusMessage({ type: 'error', text }); }
+        } catch { setStatusMessage({ type: 'error', text: 'Failed to broadcast new rate matrix.' }); } 
+        finally { setLoading(false); }
     };
 
     const handleRecordCollection = async (e) => {
         e.preventDefault();
         setLoading(true);
         setStatusMessage({ type: '', text: '' });
-
         try {
             const response = await fetch('http://localhost:8080/api/v1/collections/record', {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${user.token}` 
-                },
-                body: JSON.stringify({
-                    farmerNumber: farmerNumberInput,
-                    quantityLiters: parseFloat(quantity),
-                    sessionType,
-                    recordedByUserId: user.userId
-                })
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+                body: JSON.stringify({ farmerNumber: farmerNumberInput, quantityLiters: parseFloat(quantity), sessionType, recordedByUserId: user.userId })
             });
             const text = await response.text();
             if (response.ok) {
                 setStatusMessage({ type: 'success', text: text });
-                setFarmerNumberInput('');
-                setQuantity('');
+                setFarmerNumberInput(''); setQuantity('');
             } else { setStatusMessage({ type: 'error', text }); }
         } catch { setStatusMessage({ type: 'error', text: 'Backend link error.' }); }
         finally { setLoading(false); }
@@ -178,21 +231,11 @@ export default function ManagerDashboard() {
         e.preventDefault();
         setLoading(true);
         setStatusMessage({ type: '', text: '' });
-
         try {
             const response = await fetch('http://localhost:8080/api/v1/managers/farmers/register', {
                 method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${user.token}` 
-                },
-                body: JSON.stringify({
-                    farmerNumber,
-                    fullName,
-                    phoneNumber,
-                    password: farmerPassword,
-                    managerUsername: user.identifier
-                })
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+                body: JSON.stringify({ farmerNumber, fullName, phoneNumber, password: farmerPassword, managerUsername: user.identifier })
             });
             const text = await response.text();
             if (response.ok) {
@@ -205,10 +248,7 @@ export default function ManagerDashboard() {
 
     const handleEditClick = (farmer) => {
         setEditingFarmerId(farmer.farmerNumber);
-        setEditFormData({ 
-            fullName: farmer.fullName || '', 
-            phoneNumber: farmer.phoneNumber || '' 
-        });
+        setEditFormData({ fullName: farmer.fullName || '', phoneNumber: farmer.phoneNumber || '' });
     };
 
     const handleSaveFarmerEdit = async (farmerNumber) => {
@@ -216,70 +256,68 @@ export default function ManagerDashboard() {
         try {
             const response = await fetch(`http://localhost:8080/api/v1/managers/farmers/update`, {
                 method: 'PUT',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${user.token}` 
-                },
-                body: JSON.stringify({
-                    farmerNumber: farmerNumber,
-                    fullName: editFormData.fullName,
-                    phoneNumber: editFormData.phoneNumber,
-                    managerUsername: user.identifier
-                })
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${user.token}` },
+                body: JSON.stringify({ farmerNumber: farmerNumber, fullName: editFormData.fullName, phoneNumber: editFormData.phoneNumber, managerUsername: user.identifier })
             });
             const text = await response.text();
             if (response.ok) {
                 setStatusMessage({ type: 'success', text: 'Farmer records modified successfully.' });
                 setEditingFarmerId(null);
                 fetchCoopFarmers(); 
-            } else {
-                setStatusMessage({ type: 'error', text });
-            }
-        } catch {
-            setStatusMessage({ type: 'error', text: 'Failed to update farmer record.' });
-        } finally {
-            setLoading(false);
-        }
+            } else { setStatusMessage({ type: 'error', text }); }
+        } catch { setStatusMessage({ type: 'error', text: 'Failed to update farmer record.' }); } 
+        finally { setLoading(false); }
     };
 
     const handleDeleteFarmer = async (fNo) => {
-        if (!window.confirm(`Are you absolutely sure you want to remove Farmer #${fNo} from this cooperative framework log registry permanently?`)) return;
-        
+        if (!window.confirm(`Are you absolutely sure you want to remove Farmer #${fNo}?`)) return;
         const trueManagerUsername = localStorage.getItem("username") || user?.username || user?.identifier;
         if (!trueManagerUsername) return;
-
         setLoading(true);
         try {
             const response = await fetch(`http://localhost:8080/api/v1/managers/farmers/${fNo}?managerUsername=${encodeURIComponent(trueManagerUsername)}`, {
                 method: 'DELETE',
-                headers: {
-                    'Authorization': `Bearer ${user.token}` 
-                }
+                headers: { 'Authorization': `Bearer ${user.token}` }
             });
             const text = await response.text();
             if (response.ok) {
                 setStatusMessage({ type: 'success', text: text || 'Farmer removed cleanly.' });
                 fetchCoopFarmers();
-            } else {
-                setStatusMessage({ type: 'error', text });
-            }
-        } catch {
-            setStatusMessage({ type: 'error', text: 'Network exception during entity drop execution loops.' });
-        } finally {
-            setLoading(false);
-        }
+            } else { setStatusMessage({ type: 'error', text }); }
+        } catch { setStatusMessage({ type: 'error', text: 'Network exception during entity drop execution loops.' }); } 
+        finally { setLoading(false); }
     };
 
-    const filteredFarmers = farmersList.filter((farmer) => {
-        const query = searchQuery.toLowerCase();
-        const matchNumber = (farmer.farmerNumber || "").toLowerCase().includes(query);
-        const matchName = (farmer.fullName || "").toLowerCase().includes(query);
-        const matchPhone = (farmer.phoneNumber || "").toLowerCase().includes(query);
+    const handleGenerateReport = async () => {
+        if (!window.confirm("Generate draft reports for the current month? This will overwrite any existing drafts for this month.")) return;
+        setLoading(true);
+        setStatusMessage({ type: '', text: '' });
+        try {
+            const response = await fetch(`http://localhost:8080/api/v1/managers/reports/generate-draft?managerUsername=${user.identifier}`, {
+                method: 'POST',
+                headers: { 'Authorization': `Bearer ${user.token}` }
+            });
+            const text = await response.text();
+            if (response.ok) setStatusMessage({ type: 'success', text: text });
+            else setStatusMessage({ type: 'error', text });
+        } catch { setStatusMessage({ type: 'error', text: 'Network exception. Failed to contact the report engine.' }); } 
+        finally { setLoading(false); }
+    };
 
-        return matchNumber || matchName || matchPhone;
-    });
+    // Initialization UseEffects
+    useEffect(() => { if (user?.identifier) fetchStationPricing(); }, [user]);
+    useEffect(() => { 
+        if (activeTab === 'directory') {
+            fetchCoopFarmers();
+            setSearchQuery(''); 
+        }
+    }, [activeTab]);
 
-    return (
+    if (!user) {
+        return <div className="min-h-screen flex items-center justify-center bg-slate-50 text-xs font-semibold text-slate-500">Redirecting secure session context...</div>;
+    }
+
+   return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 space-y-6 animate-fade-in antialiased">
 
             {/* Header Display Panel */}
@@ -304,20 +342,17 @@ export default function ManagerDashboard() {
                     </p>
                 </div>
 
-                {/* 💡 NEW: 4-Button Tab Navigation Array */}
-                <div className="bg-slate-200/70 p-1 rounded-xl flex flex-row flex-wrap gap-1 self-start md:self-center w-full md:w-auto overflow-hidden">
-                    <button onClick={() => { setActiveTab('overview'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'overview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-                        Overview
-                    </button>
-                    <button onClick={() => { setActiveTab('collection'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'collection' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-                        Daily Milk
-                    </button>
-                    <button onClick={() => { setActiveTab('onboarding'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'onboarding' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-                        Onboard
-                    </button>
-                    <button onClick={() => { setActiveTab('directory'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'directory' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>
-                        Directory
-                    </button>
+                {/* The Action Area (Tabs Only) */}
+                <div className="flex flex-col sm:flex-row items-center gap-3 self-start md:self-center w-full md:w-auto">
+                    
+                    <div className="bg-slate-200/70 p-1 rounded-xl flex flex-row flex-wrap gap-1 overflow-hidden w-full sm:w-auto">
+                        <button onClick={() => { setActiveTab('overview'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'overview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Overview</button>
+                        <button onClick={() => { setActiveTab('collection'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'collection' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Daily Milk</button>
+                        <button onClick={() => { setActiveTab('onboarding'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'onboarding' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Onboard</button>
+                        <button onClick={() => { setActiveTab('directory'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'directory' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Directory</button>
+                        <button onClick={() => { setActiveTab('reports'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'reports' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Reports</button>
+                    </div> 
+
                 </div>
             </div>
 
@@ -328,11 +363,60 @@ export default function ManagerDashboard() {
                 </div>
             )}
 
-            {/* 💡 NEW: Render Overview directly without the 2-column squish constraint */}
+            {/* TAB RENDERING LOGIC */}
             {activeTab === 'overview' && <CoopOverview />}
 
-            {/* Render the legacy forms inside the original 2-column layout */}
-            {activeTab !== 'overview' && (
+            {/* 💡 PERFECTED REPORTS TAB */}
+            {activeTab === 'reports' && (
+                <div className="space-y-6 animate-fade-in w-full">
+                    {/* Centered Title */}
+                    <div className="text-center w-full space-y-2 mt-4 mb-8">
+                        <h2 className="text-xl sm:text-2xl font-black text-slate-900 tracking-tight">Cooperative Master Ledgers</h2>
+                        <p className="text-slate-500 text-xs sm:text-sm font-medium">Unified monthly reports aggregating all farmer contributions.</p>
+                    </div>
+                    
+                    {loadingStatements ? (
+                        <div className="text-center p-8 text-xs text-slate-400">Compiling cooperative ledgers...</div>
+                    ) : coopStatements.length === 0 ? (
+                        <div className="text-center p-8 border border-slate-200 border-dashed rounded-xl text-xs text-slate-400">No master ledgers generated yet.</div>
+                    ) : (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {coopStatements.map((group, idx) => (
+                                <div key={idx} className="bg-white border border-slate-200/60 rounded-xl p-5 shadow-sm hover:shadow-md transition-all flex flex-col justify-between h-full">
+                                    <div className="flex items-start justify-between mb-4">
+                                        <div className="flex items-center gap-3">
+                                            <div className="h-12 w-12 shrink-0 rounded-xl flex items-center justify-center font-black text-sm bg-emerald-100 text-emerald-700">
+                                                {group.month.split('-')[0]}
+                                            </div>
+                                            <div>
+                                                <h3 className="font-bold text-slate-900 text-sm">{group.month}</h3>
+                                                <p className="text-[11px] text-slate-500 font-medium">{group.farmerRecords.length} Active Farmers</p>
+                                            </div>
+                                        </div>
+                                        <button 
+                                            onClick={() => downloadCoopPDF(group)} 
+                                            className="bg-slate-900 hover:bg-slate-800 text-white p-2.5 rounded-lg transition shadow-sm flex items-center justify-center"
+                                            title="Download Master Ledger PDF"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor">
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                    
+                                    <div className="bg-slate-50 rounded-lg p-3 text-xs flex justify-between items-center border border-slate-100 mt-2">
+                                        <span className="font-bold text-slate-500 uppercase tracking-wider text-[10px]">Net Dispense</span>
+                                        <span className="font-black text-emerald-700">KES {group.totalPayout.toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {/* Render legacy forms (Collection, Onboarding, Directory) */}
+            {activeTab !== 'overview' && activeTab !== 'reports' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 sm:gap-8 items-start">
                     <div className="bg-white border border-slate-200/60 rounded-2xl p-4 sm:p-6 shadow-sm lg:col-span-2 order-2 lg:order-1">
                         
@@ -362,7 +446,7 @@ export default function ManagerDashboard() {
                                         </div>
                                     </div>
                                     <div>
-                                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">Delivery Shift </label>
+                                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">Delivery Shift</label>
                                         <select value={sessionType} onChange={(e) => setSessionType(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 font-medium focus:ring-2 focus:ring-emerald-600 focus:outline-none">
                                             <option value="MORNING">Morning Shift </option>
                                             <option value="AFTERNOON">Afternoon Shift </option>
@@ -521,14 +605,7 @@ export default function ManagerDashboard() {
                                                                 <td className="p-3 text-slate-900 font-bold">{farmer.fullName}</td>
                                                                 <td className="p-3 text-slate-500 font-mono">{farmer.phoneNumber}</td>
                                                                 <td className="p-3 text-right space-x-2 whitespace-nowrap">
-                                                                    <button
-                                                                        type="button"
-                                                                        onClick={() => navigate(`/manager/farmer-analytics/${farmer.farmerNumber}`, { state: { farmerName: farmer.fullName } })}
-                                                                        className="text-blue-600 hover:text-blue-800 hover:underline text-xs font-bold inline-block"
-                                                                    >
-                                                                        View
-                                                                    </button>
-                                                                    <span className="text-slate-200">|</span>
+                                                                    
                                                                     <button
                                                                         type="button"
                                                                         onClick={() => handleEditClick(farmer)}

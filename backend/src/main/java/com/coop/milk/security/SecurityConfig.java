@@ -42,7 +42,8 @@ public class SecurityConfig {
                     "/api/v1/health",
                     "/api/v1/managers/**",
                     "/api/v1/collections/**",
-                    "/api/v1/admin/**"
+                    "/api/v1/admin/**",
+                    "/api/v1/statements/**" // 💡 NEW: Added statements route here!
                 ).permitAll()
                 
                 // 3. Everything else requires a valid token
