@@ -81,17 +81,74 @@ public class MilkCollectionController {
         return ResponseEntity.ok(milkDeliveryRepository.findByFarmerFarmerId(farmerId));
     }
 
-    // =========================================================================
-    // 💡 NEW: Endpoint explicitly built for the Analytics Graph
-    // =========================================================================
+    // Endpoint explicitly built for the Analytics Graph
     @GetMapping("/farmer/{farmerNumber}/analytics")
     public ResponseEntity<?> getFarmerAnalytics(@PathVariable String farmerNumber) {
         try {
-            // Spring Boot parses "findByFarmer_FarmerNumber..." to look inside the Farmer table!
             List<MilkDelivery> records = milkDeliveryRepository.findByFarmer_FarmerNumberOrderByDeliveryDateAsc(farmerNumber);
             return ResponseEntity.ok(records);
         } catch (Exception e) {
             return ResponseEntity.badRequest().body("Failed to fetch analytics: " + e.getMessage());
+        }
+    }
+
+    // =========================================================================
+    // 💡 NEW: Manager endpoint to fetch all collections for the Verification tab
+    // =========================================================================
+    @GetMapping("/manager/{managerUsername}")
+    public ResponseEntity<?> getManagerCollections(@PathVariable String managerUsername) {
+        try {
+            List<MilkDelivery> collections = milkDeliveryRepository.findAll();
+            
+            // Safe sort: newest IDs first (prevents NullPointerExceptions on dates)
+            collections.sort((a, b) -> Long.compare(b.getDeliveryId(), a.getDeliveryId()));
+            
+            return ResponseEntity.ok(collections);
+        } catch (Exception e) {
+            return ResponseEntity.internalServerError().body("Failed to fetch collections.");
+        }
+    }
+
+    // =========================================================================
+    // 💡 NEW: Lab Deduction endpoint to subtract bad milk
+    // =========================================================================
+    @PutMapping("/deduct/{deliveryId}")
+    public ResponseEntity<?> deductBadMilk(@PathVariable Long deliveryId, @RequestParam Double badLiters) {
+        try {
+            var optionalDelivery = milkDeliveryRepository.findById(deliveryId);
+            if (optionalDelivery.isEmpty()) {
+                return ResponseEntity.badRequest().body("Delivery record not found.");
+            }
+
+            MilkDelivery delivery = optionalDelivery.get();
+            
+            // Extract the current volume using BigDecimal bridging
+            double currentQty = delivery.getQuantityLiters().doubleValue();
+
+            // 1. Logic Check: Did all the milk go bad? If so, delete the entire entry.
+            if (badLiters >= currentQty) {
+                milkDeliveryRepository.deleteById(deliveryId);
+                return ResponseEntity.ok("All milk failed lab testing. Delivery completely purged.");
+            } 
+
+            // 2. Logic Check: Partial bad milk. Deduct and convert back to BigDecimal.
+            double newQuantity = currentQty - badLiters;
+            delivery.setQuantityLiters(java.math.BigDecimal.valueOf(newQuantity));
+
+            // 3. Recalculate payout. 
+            // Note: If your MilkDelivery entity dynamically calculates totalPayout (e.g. using a @Transient getter), 
+            // you can safely delete the 3 lines inside the 'if' block below.
+            if (delivery.getPricePerLiter() != null) {
+                double price = delivery.getPricePerLiter().doubleValue();
+                delivery.setTotalPayout(java.math.BigDecimal.valueOf(newQuantity * price));
+            }
+
+            milkDeliveryRepository.save(delivery);
+            return ResponseEntity.ok("Successfully deducted " + badLiters + "L. Financials recalculated.");
+
+        } catch (Exception e) {
+            e.printStackTrace();
+            return ResponseEntity.internalServerError().body("Error applying lab adjustment: " + e.getMessage());
         }
     }
 }

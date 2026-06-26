@@ -26,6 +26,11 @@ export default function ManagerDashboard() {
     const [quantity, setQuantity] = useState('');
     const [sessionType, setSessionType] = useState('MORNING');
 
+    // 💡 NEW Form State: Verification & Deduction
+    const [verifyFarmerNo, setVerifyFarmerNo] = useState('');
+    const [verifyBadLiters, setVerifyBadLiters] = useState('');
+    const [coopCollections, setCoopCollections] = useState([]);
+
     // Form State: Onboarding
     const [farmerNumber, setFarmerNumber] = useState('');
     const [fullName, setFullName] = useState('');
@@ -142,6 +147,34 @@ export default function ManagerDashboard() {
         }
     }, [activeTab, user.identifier, farmersList]);
 
+// 💡 FETCH COLLECTIONS FOR VERIFICATION TAB
+    useEffect(() => {
+        if (activeTab === 'verification') {
+            const fetchCollections = async () => {
+                try {
+                    const response = await fetch(`http://localhost:8080/api/v1/collections/manager/${user.identifier}`);
+                    if (response.ok) setCoopCollections(await response.json());
+                } catch (error) { console.error("Failed to fetch collections for verification."); }
+            };
+            fetchCollections();
+        }
+    }, [activeTab, user.identifier, statusMessage]);
+
+   // 💡 DERIVED VERIFICATION STATE (Auto-populates UI based on Farmer Number)
+    const cleanSearch = verifyFarmerNo.trim().toLowerCase();
+
+    const targetFarmer = farmersList.find(f => 
+        f.farmerNumber && String(f.farmerNumber).toLowerCase() === cleanSearch
+    );
+
+    const targetDelivery = coopCollections
+        .filter(c => {
+            // Safely grab the farmer number whether Spring Boot nested it or not
+            const fNo = c.farmerNumber || (c.farmer && c.farmer.farmerNumber);
+            return fNo && String(fNo).toLowerCase() === cleanSearch;
+        })
+        .sort((a, b) => new Date(b.deliveryDate) - new Date(a.deliveryDate))[0];
+
     // THE MASTER COOPERATIVE PDF GENERATOR
     const downloadCoopPDF = (monthGroup) => {
         const doc = new jsPDF();
@@ -224,6 +257,33 @@ export default function ManagerDashboard() {
                 setFarmerNumberInput(''); setQuantity('');
             } else { setStatusMessage({ type: 'error', text }); }
         } catch { setStatusMessage({ type: 'error', text: 'Backend link error.' }); }
+        finally { setLoading(false); }
+    };
+
+    // 💡 NEW: Lab Deduction Submission Handler
+    const handleVerifySubmit = async (e) => {
+        e.preventDefault();
+        if (!targetDelivery) return setStatusMessage({ type: 'error', text: 'No recent delivery found for this farmer to deduct from.' });
+        
+        const deductVal = parseFloat(verifyBadLiters);
+        if (deductVal > targetDelivery.quantityLiters) {
+            return setStatusMessage({ type: 'error', text: `Cannot deduct ${deductVal}L. Farmer only delivered ${targetDelivery.quantityLiters.toFixed(2)}L.` });
+        }
+
+        setLoading(true);
+        setStatusMessage({ type: '', text: '' });
+
+        try {
+            const response = await fetch(`http://localhost:8080/api/v1/collections/deduct/${targetDelivery.deliveryId}?badLiters=${deductVal}`, {
+                method: 'PUT',
+                headers: { 'Authorization': `Bearer ${user.token}` }
+            });
+            const text = await response.text();
+            if (response.ok) {
+                setStatusMessage({ type: 'success', text });
+                setVerifyFarmerNo(''); setVerifyBadLiters('');
+            } else { setStatusMessage({ type: 'error', text }); }
+        } catch { setStatusMessage({ type: 'error', text: 'Network error during lab adjustment.' }); } 
         finally { setLoading(false); }
     };
 
@@ -348,6 +408,7 @@ export default function ManagerDashboard() {
                     <div className="bg-slate-200/70 p-1 rounded-xl flex flex-row flex-wrap gap-1 overflow-hidden w-full sm:w-auto">
                         <button onClick={() => { setActiveTab('overview'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'overview' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Overview</button>
                         <button onClick={() => { setActiveTab('collection'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'collection' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Daily Milk</button>
+                        <button onClick={() => { setActiveTab('verification'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'verification' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Verification</button>
                         <button onClick={() => { setActiveTab('onboarding'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'onboarding' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Onboard</button>
                         <button onClick={() => { setActiveTab('directory'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'directory' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Directory</button>
                         <button onClick={() => { setActiveTab('reports'); setStatusMessage({ type: '', text: '' }); }} className={`flex-1 sm:flex-initial text-center px-3 sm:px-4 py-2 rounded-lg text-xs font-bold transition-all whitespace-nowrap ${activeTab === 'reports' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'}`}>Reports</button>
@@ -462,6 +523,50 @@ export default function ManagerDashboard() {
 
                                     <button type="submit" disabled={loading} className="w-full bg-emerald-700 hover:bg-emerald-800 text-white font-semibold py-2.5 rounded-xl transition text-xs shadow-sm">
                                         {loading ? "Processing Dispatch..." : "Submit"}
+                                    </button>
+                                </form>
+                            </div>
+                        )}
+
+                        {/* 💡 THE NEW VERIFICATION TAB */}
+                        {activeTab === 'verification' && (
+                            <div className="space-y-4 animate-fade-in">
+                                <div className="flex flex-col border-b border-slate-50 pb-2">
+                                    <h2 className="text-base font-bold text-slate-900">Lab Result Verification</h2>
+                                    <p className="text-slate-400 text-xs mt-0.5">Deduct volumes that failed advanced testing.</p>
+                                </div>
+                                <form onSubmit={handleVerifySubmit} className="space-y-4 pt-2">
+                                    <div>
+                                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">Farmer Number</label>
+                                        <input type="text" value={verifyFarmerNo} onChange={(e) => setVerifyFarmerNo(e.target.value)} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-amber-500 focus:outline-none" placeholder="e.g., 0001" required />
+                                    </div>
+                                    
+                                    {/* Auto-filled Info Panel */}
+                                    {verifyFarmerNo.length > 0 && (
+                                        <div className="bg-slate-50 rounded-xl p-4 border border-slate-200 space-y-2">
+                                            <div className="flex justify-between text-xs">
+                                                <span className="font-bold text-slate-500">Farmer Name:</span>
+                                                <span className="font-black text-slate-900">
+                                                    {/* 💡 SMART FALLBACK: Tries the directory first, then checks inside the delivery object! */}
+                                                    {targetFarmer?.fullName || targetDelivery?.farmer?.fullName || targetDelivery?.fullName || "User not found"}
+                                                </span>
+                                            </div>
+                                            <div className="flex justify-between text-xs">
+                                                <span className="font-bold text-slate-500">Latest Delivery:</span>
+                                                <span className={`font-black ${targetDelivery ? 'text-emerald-600' : 'text-rose-500'}`}>
+                                                    {targetDelivery ? `${targetDelivery.quantityLiters.toFixed(2)} L (${targetDelivery.sessionType})` : "No recent deliveries"}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    <div>
+                                        <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">Bad Quantity to Deduct (Liters)</label>
+                                        <input type="number" step="0.01" value={verifyBadLiters} onChange={(e) => setVerifyBadLiters(e.target.value)} disabled={!targetDelivery} className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-rose-500 focus:outline-none disabled:opacity-50" placeholder="e.g., 2.50" required />
+                                    </div>
+
+                                    <button type="submit" disabled={loading || !targetDelivery} className="w-full bg-emerald-600 hover:bg-amber-700 text-white font-semibold py-2.5 rounded-xl transition text-xs shadow-sm disabled:opacity-50">
+                                        {loading ? "Processing..." : "Deduct & Recalculate"}
                                     </button>
                                 </form>
                             </div>
